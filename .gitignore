@@ -1,0 +1,6 @@
+results.json
+chromedriver.exe
+.venv
+.venv/*
+.idea
+.idea/*
