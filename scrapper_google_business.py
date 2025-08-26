@@ -228,7 +228,7 @@ def extract_details_from_modal(product_type, card_info):
         return None
 
 
-def scrape_google_maps(product_type, location, max_results=40):
+def scrape_google_maps(product_type, location, max_results=60):
     query = f"{product_type} {location}"
     url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}/?hl=en&gl=us"
     driver.get(url)
@@ -236,17 +236,57 @@ def scrape_google_maps(product_type, location, max_results=40):
     # Espera carregar a lista de resultados
     time.sleep(5)
 
-    # Scroll na lista lateral para carregar mais resultados
+    # Scroll na lista lateral para carregar mais resultados com controle melhorado
     try:
         results_panel = driver.find_element(By.CSS_SELECTOR, 'div[role="feed"]')
-        for _ in range(5):
+
+        previous_count = 0
+        stagnant_iterations = 0
+        max_stagnant = 3  # Máximo de iterações sem novos resultados
+
+        while True:
+            # Scroll até o final da lista
+            driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", results_panel)
+            time.sleep(3)  # Tempo maior para o lazy loading
+
+            # Conta quantos cards existem agora
+            current_cards = driver.find_elements(By.CSS_SELECTOR, 'div.Nv2PK.THOPZb.CpccDe')
+            current_count = len(current_cards)
+
+            print(f"Current cards loaded: {current_count}")
+
+            # Se chegou ao limite desejado, para
+            if current_count >= max_results:
+                print(f"Reached desired limit of {max_results} results")
+                break
+
+            # Se não carregou novos cards, incrementa contador de estagnação
+            if current_count == previous_count:
+                stagnant_iterations += 1
+                if stagnant_iterations >= max_stagnant:
+                    print(f"No more results loading. Final count: {current_count}")
+                    break
+                # Tenta scroll mais agressivo quando não carrega
+                for _ in range(3):
+                    driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", results_panel)
+                    time.sleep(1)
+            else:
+                stagnant_iterations = 0  # Reset contador se carregou novos
+
+            previous_count = current_count
+
+            # Scroll adicional para garantir que o lazy loading seja ativado
+            driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight - 100", results_panel)
+            time.sleep(1)
             driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", results_panel)
             time.sleep(2)
-    except:
-        pass
 
-    # Seleciona os cards visíveis
+    except Exception as e:
+        print(f"Error during scrolling: {str(e)}")
+
+    # Seleciona os cards visíveis (agora com mais resultados carregados)
     cards = driver.find_elements(By.CSS_SELECTOR, 'div.Nv2PK.THOPZb.CpccDe')[:max_results]
+    print(f"Final cards collected: {len(cards)}")
 
     # FASE 1: Coleta todos os links e dados básicos dos cards
     print("Collecting card links and basic data...")
