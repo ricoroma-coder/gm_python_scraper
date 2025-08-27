@@ -9,21 +9,61 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+# Suprime logs antes de qualquer importação do Selenium
+import os
+import sys
+import warnings
+from contextlib import redirect_stderr, redirect_stdout
+import io
+
+# Configurações de ambiente para suprimir logs
+os.environ['WDM_LOG_LEVEL'] = '0'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['PYTHONWARNINGS'] = 'ignore'
+warnings.filterwarnings("ignore")
+
 # Configurações do ChromeDriver
 chrome_options = Options()
 chrome_options.add_argument("--headless")  # roda em background
 chrome_options.add_argument("--disable-gpu")
 chrome_options.add_argument("--window-size=1920,1080")
 
-# Silencia logs do Chrome
+# Supressão completa de logs
 chrome_options.add_argument("--log-level=3")
 chrome_options.add_argument("--disable-logging")
-chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
+chrome_options.add_argument("--silent")
+chrome_options.add_argument("--disable-dev-shm-usage")
+chrome_options.add_argument("--no-sandbox")
+chrome_options.add_argument("--disable-extensions")
+chrome_options.add_argument("--disable-background-timer-throttling")
+chrome_options.add_argument("--disable-background-networking")
+chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+chrome_options.add_argument("--disable-renderer-backgrounding")
+chrome_options.add_argument("--disable-features=TranslateUI")
+chrome_options.add_argument("--disable-ipc-flooding-protection")
+chrome_options.add_argument("--disable-hang-monitor")
+chrome_options.add_argument("--disable-client-side-phishing-detection")
+chrome_options.add_argument("--disable-component-update")
+chrome_options.add_argument("--disable-default-apps")
+chrome_options.add_argument("--disable-domain-reliability")
+chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+chrome_options.add_argument("--disable-web-security")
+chrome_options.add_argument("--disable-features=VizServiceDisplayCompositor")
+chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+
+# Experimental options para supressão
+chrome_options.add_experimental_option('excludeSwitches', ['enable-logging', 'enable-automation'])
 chrome_options.add_experimental_option("useAutomationExtension", False)
 
+# Suprime completamente stdout e stderr durante a inicialização
+null_output = io.StringIO()
+
 # Ajuste o path para o seu chromedriver
-service = Service(executable_path="chromedriver.exe")
-driver = webdriver.Chrome(service=service, options=chrome_options)
+with redirect_stderr(null_output), redirect_stdout(null_output):
+    service = Service(executable_path="chromedriver.exe")
+    service.creation_flags = 0x08000000  # CREATE_NO_WINDOW no Windows
+    driver = webdriver.Chrome(service=service, options=chrome_options)
+
 wait = WebDriverWait(driver, 15)
 
 
