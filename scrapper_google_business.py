@@ -471,11 +471,12 @@ if __name__ == "__main__":
 
     try:
         data = scrape_google_maps(product_type, location)
+        file_name = f"{product_type}.json"
 
-        with open("results.json", "w", encoding="utf-8") as f:
+        with open(file_name, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
 
-        print(f"Search completed! {len(data)} results saved to results.json and database")
+        print(f"Search completed! {len(data)} results saved to {file_name} and database")
         print(f"Results breakdown:")
 
         # Conta registros novos vs existentes
