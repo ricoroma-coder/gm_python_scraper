@@ -1,14 +1,13 @@
 import time
 import json
 import re
+from DatabaseManager import DatabaseManager
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException
-from selenium.webdriver.common.keys import Keys
 
 # Configurações do ChromeDriver
 chrome_options = Options()
@@ -228,7 +227,7 @@ def extract_details_from_modal(product_type, card_info):
         return None
 
 
-def scrape_google_maps(product_type, location, max_results=60):
+def scrape_google_maps(product_type, location, max_results=10):
     query = f"{product_type} {location}"
     url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}/?hl=en&gl=us"
     driver.get(url)
@@ -284,26 +283,145 @@ def scrape_google_maps(product_type, location, max_results=60):
     except Exception as e:
         print(f"Error during scrolling: {str(e)}")
 
-    # Seleciona os cards visíveis (agora com mais resultados carregados)
-    cards = driver.find_elements(By.CSS_SELECTOR, 'div.Nv2PK.THOPZb.CpccDe')[:max_results]
-    print(f"Final cards collected: {len(cards)}")
-
-    # FASE 1: Coleta todos os links e dados básicos dos cards
-    print("Collecting card links and basic data...")
+    # FASE 1: Coleta todos os links e dados básicos dos cards iniciais
+    print("Collecting initial card links and basic data...")
+    cards = driver.find_elements(By.CSS_SELECTOR, 'div.Nv2PK.THOPZb.CpccDe')
     card_data_list = collect_card_links(cards)
 
-    # FASE 2: Visita cada estabelecimento individualmente
+    # FASE 2: Processa os cards até encontrar o limite de novos registros
     results = []
-    for i, card_info in enumerate(card_data_list):
-        print(f"Processing item {i + 1}/{len(card_data_list)}...")
+    db = DatabaseManager()
+    processed_count = 0  # Contador para novos registros processados
+    card_index = 0  # Índice atual na lista de cards
+
+    while processed_count < max_results:
+        # Se chegou ao fim da lista de cards, carrega mais
+        if card_index >= len(card_data_list):
+            try:
+                # Volta para a página de busca original para carregar mais
+                driver.get(url)
+                time.sleep(3)
+
+                # Scroll mais cards
+                results_panel = driver.find_element(By.CSS_SELECTOR, 'div[role="feed"]')
+
+                # Scroll mais agressivo para carregar ainda mais resultados
+                scroll_attempts = 10  # Aumenta tentativas de scroll
+                for scroll in range(scroll_attempts):
+                    driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", results_panel)
+                    time.sleep(2)
+
+                    # Verifica se carregou novos cards
+                    current_cards = driver.find_elements(By.CSS_SELECTOR, 'div.Nv2PK.THOPZb.CpccDe')
+                    if len(current_cards) > len(card_data_list):
+                        break
+
+                # Coleta novos cards
+                new_cards = driver.find_elements(By.CSS_SELECTOR, 'div.Nv2PK.THOPZb.CpccDe')
+                new_card_data = collect_card_links(new_cards)
+
+                # Se não encontrou novos cards suficientes, para
+                if len(new_card_data) <= len(card_data_list):
+                    print("No more cards available to load")
+                    break
+
+                card_data_list = new_card_data
+                print(f"Loaded more cards. Total available: {len(card_data_list)}")
+
+            except Exception as e:
+                print(f"Error loading more cards: {str(e)}")
+                print("Continuing with available cards...")
+                # Se não conseguir carregar mais, continua com os cards disponíveis
+                if card_index >= len(card_data_list):
+                    break
+
+        # Se ainda não tem cards suficientes, para
+        if card_index >= len(card_data_list):
+            print("Reached end of available cards")
+            break
+
+        card_info = card_data_list[card_index]
+        print(
+            f"Processing item {card_index + 1}/{len(card_data_list)} (New records found: {processed_count}/{max_results})...")
 
         result = extract_details_from_modal(product_type, card_info)
         if result:
-            results.append(result)
+            # Verifica se já existe no banco com mesmo nome, latitude, longitude e product_type
+            existing_record = None
+            if result.get('name') and result.get('lat') and result.get('lon'):
+                existing_records = db.get(
+                    "SELECT * FROM products WHERE name = ? AND latitude = ? AND longitude = ? AND product_type = ?",
+                    [result.get('name'), float(result.get('lat')), float(result.get('lon')), product_type]
+                )
+                if existing_records:
+                    existing_record = existing_records[0]
 
+            if existing_record:
+                # Se existe no banco, monta o resultado com os dados do banco
+                print(f"Found existing record with ID: {existing_record['id']} (not counting towards limit)")
+
+                # Converte os dados do banco para o formato JSON
+                json_result = {
+                    "name": existing_record['name'],
+                    "rating": str(existing_record['rating']) if existing_record['rating'] else None,
+                    "rating_count": str(existing_record['rating_count']) if existing_record['rating_count'] else None,
+                    "description": existing_record['description'],
+                    "images": existing_record['images'].split(';') if existing_record['images'] else [],
+                    "link": existing_record['link'],
+                    "facilities": existing_record['facilities'].split(';') if existing_record['facilities'] else [],
+                    "lat": str(existing_record['latitude']) if existing_record['latitude'] else None,
+                    "lon": str(existing_record['longitude']) if existing_record['longitude'] else None,
+                    "phone": existing_record['phone'],
+                    "address": existing_record['address'],
+                    "operating_hours": None,  # Campo não armazenado no banco
+                    "db_id": existing_record['id']
+                }
+
+                # Adiciona stars apenas para hotéis
+                if product_type.lower() == 'hotel':
+                    json_result["stars"] = str(existing_record['stars']) if existing_record['stars'] else None
+
+                results.append(json_result)
+                # NÃO incrementa processed_count pois registro existente não conta no limite
+
+            else:
+                # Se não existe, processa normalmente e insere no banco
+                # Prepara os dados para inserção no banco
+                db_data = {
+                    'product_type': product_type,
+                    'name': result.get('name'),
+                    'description': result.get('description'),
+                    'link': result.get('link'),
+                    'images': ';'.join(result.get('images', [])) if result.get('images') else None,
+                    'rating': float(result.get('rating', 0)) if result.get('rating') else None,
+                    'rating_count': int(result.get('rating_count', 0)) if result.get('rating_count') else None,
+                    'facilities': ';'.join(result.get('facilities', [])) if result.get('facilities') else None,
+                    'latitude': float(result.get('lat')) if result.get('lat') else None,
+                    'longitude': float(result.get('lon')) if result.get('lon') else None,
+                    'phone': result.get('phone'),
+                    'address': result.get('address')
+                }
+
+                # Adiciona stars apenas para hotéis
+                if product_type.lower() == 'hotel':
+                    db_data['stars'] = int(result.get('stars')) if result.get('stars') else None
+
+                # Insere no banco de dados
+                record_id = db.create(db_data)
+                if record_id:
+                    result['db_id'] = record_id
+                    print(f"New record saved with ID: {record_id}")
+
+                results.append(result)
+                processed_count += 1  # Incrementa contador apenas para novos registros
+                print(f"Progress: {processed_count}/{max_results} new records processed")
+
+        card_index += 1
         # Pequena pausa entre requisições
         time.sleep(1)
 
+    print(
+        f"Finished processing. Found {processed_count} new records and {len(results) - processed_count} existing records.")
     return results
 
 
@@ -317,7 +435,27 @@ if __name__ == "__main__":
         with open("results.json", "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
 
-        print(f"Search completed! {len(data)} results saved to results.json")
+        print(f"Search completed! {len(data)} results saved to results.json and database")
+        print(f"Results breakdown:")
+
+        # Conta registros novos vs existentes
+        new_records_count = sum(1 for item in data if 'db_id' in item and any(
+            r.get('db_id') == item['db_id'] for r in data if r != item) == False)
+        existing_records_count = len(data) - new_records_count
+
+        print(f"- New records processed: {new_records_count}")
+        print(f"- Existing records found: {existing_records_count}")
+
+        # Exemplo de uso das funções do banco de dados
+        db = DatabaseManager()
+
+        # Consulta todos os registros
+        all_products = db.get("SELECT * FROM products")
+        print(f"Total products in database: {len(all_products)}")
+
+        # Consulta por tipo de produto
+        current_type_products = db.get("SELECT * FROM products WHERE product_type = ?", [product_type])
+        print(f"Products of type '{product_type}' in database: {len(current_type_products)}")
 
     except Exception as e:
         print(f"Error during execution: {str(e)}")
