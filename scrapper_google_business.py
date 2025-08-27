@@ -1,3 +1,4 @@
+import logging
 import time
 import json
 import re
@@ -466,7 +467,14 @@ def scrape_google_maps(product_type, location, max_results=10):
 
 
 if __name__ == "__main__":
-    product_type = input("Enter product type (hotel, restaurant, attraction, shopping, etc.): ")
+    allowed_types = ['hotel', 'gastronomy', 'attraction', 'shopping', 'activity']
+    product_type = input("Enter product type (hotel, gastronomy, attraction, shopping or activity.): ")
+
+    if product_type not in allowed_types:
+        logging.error("Not allowed product type")
+        driver.quit()
+        exit(1)
+
     location = input("Enter location (city/state/country): ")
 
     try:
