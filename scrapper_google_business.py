@@ -398,29 +398,51 @@ def scrape_google_maps(product_type, location, max_results=10):
                     existing_record = existing_records[0]
 
             if existing_record:
-                # Se existe no banco, monta o resultado com os dados do banco
-                print(f"Found existing record with ID: {existing_record['id']} (not counting towards limit)")
+                # Se existe no banco, atualiza com os dados do scraper
+                print(f"Found existing record with ID: {existing_record['id']} - updating with new data")
 
-                # Converte os dados do banco para o formato JSON
+                # Prepara os dados para atualização no banco
+                update_data = {
+                    'name': result.get('name'),
+                    'description': result.get('description'),
+                    'link': result.get('link'),
+                    'images': ';'.join(result.get('images', [])) if result.get('images') else None,
+                    'rating': float(result.get('rating', 0)) if result.get('rating') else None,
+                    'rating_count': int(result.get('rating_count', 0)) if result.get('rating_count') else None,
+                    'facilities': ';'.join(result.get('facilities', [])) if result.get('facilities') else None,
+                    'latitude': float(result.get('lat')) if result.get('lat') else None,
+                    'longitude': float(result.get('lon')) if result.get('lon') else None,
+                    'phone': result.get('phone'),
+                    'address': result.get('address')
+                }
+
+                # Adiciona stars apenas para hotéis
+                if product_type.lower() == 'hotel':
+                    update_data['stars'] = int(result.get('stars')) if result.get('stars') else None
+
+                # Atualiza o registro no banco
+                db.update(existing_record['id'], update_data)
+
+                # Converte os dados do scraper para o formato JSON (ao invés dos dados do banco)
                 json_result = {
-                    "name": existing_record['name'],
-                    "rating": str(existing_record['rating']) if existing_record['rating'] else None,
-                    "rating_count": str(existing_record['rating_count']) if existing_record['rating_count'] else None,
-                    "description": existing_record['description'],
-                    "images": existing_record['images'].split(';') if existing_record['images'] else [],
-                    "link": existing_record['link'],
-                    "facilities": existing_record['facilities'].split(';') if existing_record['facilities'] else [],
-                    "lat": str(existing_record['latitude']) if existing_record['latitude'] else None,
-                    "lon": str(existing_record['longitude']) if existing_record['longitude'] else None,
-                    "phone": existing_record['phone'],
-                    "address": existing_record['address'],
-                    "operating_hours": None,  # Campo não armazenado no banco
+                    "name": result.get('name'),
+                    "rating": result.get('rating'),
+                    "rating_count": result.get('rating_count'),
+                    "description": result.get('description'),
+                    "images": result.get('images', []),
+                    "link": result.get('link'),
+                    "facilities": result.get('facilities', []),
+                    "lat": result.get('lat'),
+                    "lon": result.get('lon'),
+                    "phone": result.get('phone'),
+                    "address": result.get('address'),
+                    "operating_hours": result.get('operating_hours'),
                     "db_id": existing_record['id']
                 }
 
                 # Adiciona stars apenas para hotéis
                 if product_type.lower() == 'hotel':
-                    json_result["stars"] = str(existing_record['stars']) if existing_record['stars'] else None
+                    json_result["stars"] = result.get('stars')
 
                 results.append(json_result)
                 # NÃO incrementa processed_count pois registro existente não conta no limite
