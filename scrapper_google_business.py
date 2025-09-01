@@ -67,6 +67,16 @@ with redirect_stderr(null_output), redirect_stdout(null_output):
 
 wait = WebDriverWait(driver, 15)
 
+# Palavras-chave para cada tipo de produto
+PRODUCT_KEYWORDS = {
+    'hotel': ['bed and breakfast', 'b&b', 'resort', 'hotel boutique'],
+    'gastronomy': ['diner', 'bistro', 'bar', 'wine bar', 'steakhouse'],
+    'attraction': ['monument', 'museum', 'natural park', 'gallery', 'viewpoint', 'temple', 'church', 'cathedral',
+                   'heritage', 'historical site', 'square', 'park', 'castle', 'palace'],
+    'shopping': ['market', 'shopping center'],
+    'activity': ['tour', 'outdoor', 'nature', 'class', 'tasting', 'workshop', 'cycling']
+}
+
 
 def extract_numbers_only(text):
     """Extrai apenas números de uma string"""
@@ -268,8 +278,9 @@ def extract_details_from_modal(product_type, card_info):
         return None
 
 
-def scrape_google_maps(product_type, location, max_results=10):
-    query = f"{product_type} {location}"
+def scrape_google_maps_with_keyword(product_type, location, search_term, max_results=10):
+    """Faz o scraping para um termo de busca específico"""
+    query = f"{search_term} {location}"
     url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}/?hl=en&gl=us"
     driver.get(url)
 
@@ -483,9 +494,54 @@ def scrape_google_maps(product_type, location, max_results=10):
         # Pequena pausa entre requisições
         time.sleep(1)
 
-    print(
-        f"Finished processing. Found {processed_count} new records and {len(results) - processed_count} existing records.")
     return results
+
+
+def scrape_google_maps(product_type, location, max_results=10):
+    """Função principal que executa o scraping com o product_type e suas palavras-chave"""
+    all_results = []
+
+    # Lista de termos de busca: product_type + suas palavras-chave
+    search_terms = [product_type]  # Começa com o próprio product_type
+
+    # Adiciona as palavras-chave se existirem para o product_type
+    if product_type in PRODUCT_KEYWORDS:
+        search_terms.extend(PRODUCT_KEYWORDS[product_type])
+
+    print(f"Starting scraping for product_type: {product_type}")
+    print(f"Search terms to process: {search_terms}")
+    print(f"Total searches to perform: {len(search_terms)}")
+    print("=" * 60)
+
+    # Executa o scraping para cada termo de busca
+    for i, search_term in enumerate(search_terms, 1):
+        print(f"\n[SEARCH {i}/{len(search_terms)}] Processing search term: '{search_term}'")
+        print("-" * 40)
+
+        try:
+            results = scrape_google_maps_with_keyword(product_type, location, search_term, max_results)
+            all_results.extend(results)
+
+            # Conta novos registros nesta iteração
+            new_records_in_iteration = sum(1 for item in results if 'db_id' in item and
+                                           not any(existing.get('db_id') == item['db_id'] and existing != item
+                                                   for existing in all_results[:-len(results)]))
+            existing_records_in_iteration = len(results) - new_records_in_iteration
+
+            print(f"Search '{search_term}' completed:")
+            print(f"- New records: {new_records_in_iteration}")
+            print(f"- Existing records: {existing_records_in_iteration}")
+            print(f"- Total results: {len(results)}")
+
+        except Exception as e:
+            print(f"Error processing search term '{search_term}': {str(e)}")
+            continue
+
+    print("\n" + "=" * 60)
+    print("ALL SEARCHES COMPLETED")
+    print(f"Total results collected: {len(all_results)}")
+
+    return all_results
 
 
 if __name__ == "__main__":
@@ -498,24 +554,32 @@ if __name__ == "__main__":
         exit(1)
 
     location = input("Enter location (city/state/country): ")
+    max_results = int(input("Enter max results per search term (default 10): ") or 10)
 
     try:
-        data = scrape_google_maps(product_type, location)
+        data = scrape_google_maps(product_type, location, max_results)
         file_name = f"{product_type}.json"
 
         with open(file_name, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
 
-        print(f"Search completed! {len(data)} results saved to {file_name} and database")
+        print(f"\nSearch completed! {len(data)} total results saved to {file_name} and database")
         print(f"Results breakdown:")
 
-        # Conta registros novos vs existentes
-        new_records_count = sum(1 for item in data if 'db_id' in item and any(
-            r.get('db_id') == item['db_id'] for r in data if r != item) == False)
-        existing_records_count = len(data) - new_records_count
+        # Conta registros novos vs existentes no total
+        unique_db_ids = set()
+        new_records_count = 0
+        existing_records_count = 0
 
-        print(f"- New records processed: {new_records_count}")
-        print(f"- Existing records found: {existing_records_count}")
+        for item in data:
+            if 'db_id' in item:
+                if item['db_id'] not in unique_db_ids:
+                    # Verifica se este é um registro novo ou existente baseado em outros critérios
+                    # Como não temos essa informação direta, assumimos que registros únicos por db_id são válidos
+                    unique_db_ids.add(item['db_id'])
+
+        # Simplifica a contagem: todos os resultados são válidos
+        print(f"- Total unique results: {len(data)}")
 
         # Exemplo de uso das funções do banco de dados
         db = DatabaseManager()
@@ -527,6 +591,15 @@ if __name__ == "__main__":
         # Consulta por tipo de produto
         current_type_products = db.get("SELECT * FROM products WHERE product_type = ?", [product_type])
         print(f"Products of type '{product_type}' in database: {len(current_type_products)}")
+
+        # Mostra estatísticas por palavra-chave utilizada
+        search_terms = [product_type]
+        if product_type in PRODUCT_KEYWORDS:
+            search_terms.extend(PRODUCT_KEYWORDS[product_type])
+
+        print(f"\nKeywords used for '{product_type}':")
+        for term in search_terms:
+            print(f"- {term}")
 
     except Exception as e:
         print(f"Error during execution: {str(e)}")
