@@ -69,12 +69,57 @@ wait = WebDriverWait(driver, 15)
 
 # Palavras-chave para cada tipo de produto
 PRODUCT_KEYWORDS = {
-    'hotel': ['bed and breakfast', 'b&b', 'resort', 'hotel boutique'],
-    'gastronomy': ['diner', 'bistro', 'bar', 'wine bar', 'steakhouse'],
-    'attraction': ['monument', 'museum', 'natural park', 'gallery', 'viewpoint', 'temple', 'church', 'cathedral',
-                   'heritage', 'historical site', 'square', 'park', 'castle', 'palace'],
-    'shopping': ['market', 'shopping center'],
-    'activity': ['tour', 'outdoor', 'nature', 'class', 'tasting', 'workshop', 'cycling']
+    'hotel': [
+        'accommodation', 'hotels', 'lodging', 'guesthouses', 'farm hotel', 'eco lodge', 'glamping',
+        'camping', 'aparthotel', 'hotel boutique', 'all inclusive resort', 'spa resort', 'beach resort',
+        'mountain lodge', 'cabins', 'villas', 'rural houses', 'tourist farms', 'haciendas', 'estancias',
+        'refuges', 'accommodations', 'inns', 'hostels', 'auberges', 'chambres dhotes', 'ryokans', 'riads',
+        'bed and breakfast', 'b&b', 'resort', 'pensions', 'hostels', 'rental apartments', 'chalets',
+        'vacation homes', 'pet friendly hotel', 'hotel with breakfast'
+    ],
+    'gastronomy': [
+        'restaurants', 'bars', 'cafes', 'street food', 'bistros', 'pizzerias', 'steakhouses', 'snack bars',
+        'bakeries', 'pastry shops', 'ice cream shops', 'pubs', 'taverns', 'canteens', 'trattorias',
+        'brasseries', 'gastropubs', 'food trucks', 'gastronomic markets', 'local cuisine', 'typical food',
+        'regional dishes', 'international cuisine', 'italian food', 'japanese cuisine', 'mexican food',
+        'french cuisine', 'chinese food', 'arabic cuisine', 'vegetarian food', 'vegan food',
+        'organic cuisine', 'fast food', 'slow food', 'wine tasting', 'beer tasting', 'cooking classes',
+        'food tours', 'dinner with show', 'restaurants with view', 'gastronomic experiences', 'chefs table',
+        'tasting menu', 'brunch', 'happy hour', 'dining', 'cuisine', 'diner', 'wine bar'
+    ],
+    'attraction': [
+        'tourist attractions', 'museums', 'national parks', 'historical monuments', 'beaches', 'viewpoints',
+        'historic centers', 'churches', 'cathedrals', 'castles', 'palaces', 'archaeological ruins',
+        'historic sites', 'unesco world heritage', 'landmarks', 'waterfalls', 'ecological trails',
+        'natural reserves', 'state parks', 'botanical gardens', 'zoos', 'aquariums', 'caves', 'canyons',
+        'volcanoes', 'glaciers', 'deserts', 'forests', 'lakes', 'rivers', 'art museums', 'galleries',
+        'theaters', 'operas', 'cultural centers', 'historic libraries', 'traditional markets',
+        'historic neighborhoods', 'colonial architecture', 'street art', 'murals', 'public sculptures',
+        'sightseeing', 'must see places', 'monument', 'museum', 'natural park', 'gallery', 'temple',
+        'heritage', 'historical site', 'square', 'park', 'palace'
+    ],
+    'shopping': [
+        'shopping centers', 'local markets', 'craft stores', 'luxury boutiques', 'outlets',
+        'commercial galleries', 'commercial streets', 'craft fairs', 'flea markets', 'antique shops',
+        'souvenir shops', 'duty free', 'tax free shopping', 'local crafts', 'typical products',
+        'souvenirs', 'jewelry', 'traditional clothing', 'ceramics', 'fabrics', 'spices', 'local wines',
+        'regional sweets', 'folk art', 'musical instruments', 'personal shopping', 'shopping tours',
+        'discount shopping', 'night markets', 'street fairs', 'bazaars', 'vintage stores',
+        'thrift stores', 'concept stores', 'flagship stores', 'markets', 'boutiques', 'stores',
+        'shops', 'market', 'shopping center'
+    ],
+    'activity': [
+        'water sports', 'boat trips', 'trails', 'horseback riding', 'extreme sports', 'diving',
+        'snorkeling', 'surf', 'windsurf', 'kitesurf', 'rafting', 'canoeing', 'stand up paddle',
+        'jet ski', 'parasailing', 'bungee jump', 'rappelling', 'climbing', 'zipline', 'paragliding',
+        'hang gliding', 'mountaineering', 'cycling', 'mountain bike', 'city tours', 'walking tours',
+        'guided tours', 'gastronomic tours', 'wine tours', 'photography tours', 'cooking classes',
+        'craft workshops', 'winery visits', 'tastings', 'night tours', 'ghost tours', 'historic tours',
+        'theme parks', 'water parks', 'interactive zoos', 'educational farms', 'train rides',
+        'carriage rides', 'picnics', 'children activities', 'family activities', 'kid friendly tours',
+        'activities', 'things to do', 'excursions', 'tours', 'adventures', 'experiences', 'tour',
+        'outdoor', 'nature', 'class', 'tasting', 'workshop'
+    ]
 }
 
 
@@ -169,32 +214,86 @@ def extract_details_from_modal(product_type, card_info):
             except:
                 stars = None
 
-        # Descrição (busca específica no elemento .HeZRrf)
+        # Clica no botão "About" para acessar descrição e facilities
+        try:
+            about_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[aria-label*="About"]')))
+            driver.execute_script("arguments[0].click();", about_button)
+            time.sleep(3)  # Aguarda carregar o conteúdo do About
+        except Exception as e:
+            print(f"Could not click About button: {str(e)}")
+
+        # Descrição (após clicar em About)
         description = ""
         try:
-            # Primeiro clica no botão para expandir descrição se existir
-            try:
-                expand_button = driver.find_element(By.CSS_SELECTOR, '.HeZRrf button, .HeZRrf .gkhule')
-                driver.execute_script("arguments[0].click();", expand_button)
-                time.sleep(1)
-            except:
-                pass
+            # Múltiplos seletores para descrição (diferentes estruturas)
+            description_selectors = [
+                '.HeZRrf .P1LL5e',  # Para hotéis
+                '.PbZDve p .HlvSq',  # Para outros tipos
+                '.PbZDve .HlvSq',  # Variação para outros tipos
+                '.HeZRrf',  # Fallback geral
+                '.PbZDve p'  # Fallback para outros tipos
+            ]
 
-            # Busca especificamente no elemento .HeZRrf
-            description_elements = driver.find_elements(By.CSS_SELECTOR, '.HeZRrf .P1LL5e')
-            if description_elements:
-                desc_parts = [elem.text.strip() for elem in description_elements if elem.text.strip()]
-                description = ' '.join(desc_parts)
+            for selector in description_selectors:
+                try:
+                    if selector == '.HeZRrf .P1LL5e':
+                        # Para múltiplos elementos P1LL5e
+                        description_elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                        if description_elements:
+                            desc_parts = [elem.text.strip() for elem in description_elements if elem.text.strip()]
+                            description = ' '.join(desc_parts)
+                            if description:
+                                break
+                    else:
+                        # Para seletor único
+                        description_element = driver.find_element(By.CSS_SELECTOR, selector)
+                        description_text = description_element.text.strip()
+                        if description_text and len(description_text) > 20:
+                            description = description_text
+                            break
+                except:
+                    continue
 
-            # Se não encontrou, tenta buscar texto diretamente no .HeZRrf
-            if not description:
-                herzrf_element = driver.find_element(By.CSS_SELECTOR, '.HeZRrf')
-                herzrf_text = herzrf_element.text.strip()
-                if herzrf_text and len(herzrf_text) > 20:
-                    description = re.sub(r'\b(More|Less|Show more|Show less)\b', '', herzrf_text).strip()
-
-        except:
+        except Exception as e:
+            print(f"Could not extract description: {str(e)}")
             description = ""
+
+        # Facilities (após clicar em About)
+        facilities = []
+        try:
+            # Para hotéis: busca facilities na estrutura .QoXOEc
+            if product_type.lower() == 'hotel':
+                facility_elements = driver.find_elements(By.CSS_SELECTOR, '.QoXOEc .CK16pd')
+                for facility_elem in facility_elements:
+                    try:
+                        # Verifica se não tem o símbolo G47vBd (que indica "não tem")
+                        has_unavailable_symbol = facility_elem.find_elements(By.CSS_SELECTOR, '.G47vBd')
+                        if not has_unavailable_symbol:  # Se não tem o símbolo de "não disponível"
+                            facility_text_elem = facility_elem.find_element(By.CSS_SELECTOR, '.gSamH')
+                            facility_text = facility_text_elem.text.strip()
+                            if facility_text:
+                                facilities.append(facility_text)
+                    except:
+                        continue
+
+            # Para outros tipos: busca facilities nas seções categorizadas
+            else:
+                facility_sections = driver.find_elements(By.CSS_SELECTOR, '.iP2t7d')
+                for section in facility_sections:
+                    try:
+                        facility_items = section.find_elements(By.CSS_SELECTOR, '.hpLkke .iNvpkb span[aria-label]')
+                        for item in facility_items:
+                            facility_text = item.get_attribute('aria-label')
+                            if facility_text:
+                                # Remove prefixos como "Has", "Good for", etc.
+                                clean_facility = re.sub(r'^(Has |Good for |Accepts |Getting )', '', facility_text)
+                                facilities.append(clean_facility)
+                    except:
+                        continue
+
+        except Exception as e:
+            print(f"Could not extract facilities: {str(e)}")
+            facilities = []
 
         # Imagem principal
         try:
@@ -259,7 +358,7 @@ def extract_details_from_modal(product_type, card_info):
             "description": description,
             "images": images,
             "link": link,
-            "facilities": card_info['facilities'],  # Usa as facilidades coletadas do card
+            "facilities": facilities,  # Usa as facilidades extraídas do About
             "lat": lat,
             "lon": lon,
             "phone": phone,
