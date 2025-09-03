@@ -29,7 +29,8 @@ class DatabaseManager:
                 longitude REAL,
                 phone TEXT,
                 address TEXT,
-                stars INTEGER
+                stars INTEGER,
+                price TEXT
             )
         ''')
 
