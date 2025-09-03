@@ -350,6 +350,73 @@ def extract_details_from_modal(product_type, card_info):
         except:
             pass
 
+        # Preço (específico por tipo de produto)
+        price = None
+        try:
+            if product_type.lower() in ['hotel', 'attraction']:
+                # Para hotéis e atrações: busca no botão com preço e período
+                try:
+                    price_button = driver.find_element(By.CSS_SELECTOR,
+                                                       'button[aria-label*="R$"], button[aria-label*="$"], button[aria-label*="€"]')
+                    price_aria_label = price_button.get_attribute('aria-label')
+                    # Extrai o preço do aria-label
+                    price_match = re.search(r'(R\$\d+|€\d+|\$\d+)', price_aria_label)
+                    if price_match:
+                        price = price_match.group(1)
+                except:
+                    # Fallback: busca diretamente no span com classe do preço
+                    try:
+                        price_element = driver.find_element(By.CSS_SELECTOR,
+                                                            '.fontTitleLarge.Cbys4b, .dkgw2 .fontTitleLarge')
+                        price = price_element.text
+                    except:
+                        pass
+
+            elif product_type.lower() == 'gastronomy':
+                # Para gastronomia: busca na seção de faixa de preço
+                try:
+                    price_element = driver.find_element(By.CSS_SELECTOR, '.MNVeJb.eXOdV.eF9eN.PnPrlf')
+                    price_text = price_element.text
+                    # Extrai a faixa de preço (ex: €20–40 per person)
+                    price_match = re.search(r'(€\d+–\d+|R\$\d+–\d+|\$\d+–\d+|\+?[€R\$]\d+)', price_text)
+                    if price_match:
+                        price = price_match.group(1)
+                except:
+                    pass
+
+            elif product_type.lower() == 'activity':
+                # Para atividades: busca nos cards de ofertas
+                try:
+                    price_elements = driver.find_elements(By.CSS_SELECTOR, '.apD3Md, .W0by1 .apD3Md')
+                    if price_elements:
+                        # Pega o primeiro preço encontrado
+                        price = price_elements[0].text
+                except:
+                    pass
+
+            # Se não encontrou preço específico, busca genérica por padrões monetários
+            if not price:
+                # Busca genérica por elementos que contenham símbolos monetários
+                monetary_patterns = [
+                    r'R\$\s*\d+(?:[.,]\d+)*',
+                    r'€\s*\d+(?:[.,]\d+)*',
+                    r'\$\s*\d+(?:[.,]\d+)*',
+                    r'\d+\s*€',
+                    r'\d+\s*R\$',
+                    r'\d+\s*\$'
+                ]
+
+                page_text = driver.find_element(By.TAG_NAME, 'body').text
+                for pattern in monetary_patterns:
+                    matches = re.findall(pattern, page_text)
+                    if matches:
+                        price = matches[0]
+                        break
+
+        except Exception as e:
+            print(f"Could not extract price: {str(e)}")
+            price = None
+
         # Monta o resultado
         result = {
             "name": name,
@@ -363,6 +430,7 @@ def extract_details_from_modal(product_type, card_info):
             "lon": lon,
             "phone": phone,
             "address": address,
+            "price": price,  # Novo campo para preço
             "operating_hours": operating_hours
         }
 
@@ -523,7 +591,8 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
                     'latitude': float(result.get('lat')) if result.get('lat') else None,
                     'longitude': float(result.get('lon')) if result.get('lon') else None,
                     'phone': result.get('phone'),
-                    'address': result.get('address')
+                    'address': result.get('address'),
+                    'price': result.get('price')
                 }
 
                 # Adiciona stars apenas para hotéis
@@ -546,6 +615,7 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
                     "lon": result.get('lon'),
                     "phone": result.get('phone'),
                     "address": result.get('address'),
+                    "price": result.get('price'),
                     "operating_hours": result.get('operating_hours'),
                     "db_id": existing_record['id']
                 }
@@ -572,7 +642,8 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
                     'latitude': float(result.get('lat')) if result.get('lat') else None,
                     'longitude': float(result.get('lon')) if result.get('lon') else None,
                     'phone': result.get('phone'),
-                    'address': result.get('address')
+                    'address': result.get('address'),
+                    'price': result.get('price')
                 }
 
                 # Adiciona stars apenas para hotéis
