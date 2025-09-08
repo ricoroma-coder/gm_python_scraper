@@ -9,6 +9,8 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import WebDriverException, InvalidSessionIdException, NoSuchElementException, \
+    TimeoutException
 
 # Suprime logs antes de qualquer importação do Selenium
 import os
@@ -23,49 +25,224 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['PYTHONWARNINGS'] = 'ignore'
 warnings.filterwarnings("ignore")
 
-# Configurações do ChromeDriver
-chrome_options = Options()
-chrome_options.add_argument("--headless")  # roda em background
-chrome_options.add_argument("--disable-gpu")
-chrome_options.add_argument("--window-size=1920,1080")
+# Variáveis globais para gerenciar driver
+driver = None
+wait = None
 
-# Supressão completa de logs
-chrome_options.add_argument("--log-level=3")
-chrome_options.add_argument("--disable-logging")
-chrome_options.add_argument("--silent")
-chrome_options.add_argument("--disable-dev-shm-usage")
-chrome_options.add_argument("--no-sandbox")
-chrome_options.add_argument("--disable-extensions")
-chrome_options.add_argument("--disable-background-timer-throttling")
-chrome_options.add_argument("--disable-background-networking")
-chrome_options.add_argument("--disable-backgrounding-occluded-windows")
-chrome_options.add_argument("--disable-renderer-backgrounding")
-chrome_options.add_argument("--disable-features=TranslateUI")
-chrome_options.add_argument("--disable-ipc-flooding-protection")
-chrome_options.add_argument("--disable-hang-monitor")
-chrome_options.add_argument("--disable-client-side-phishing-detection")
-chrome_options.add_argument("--disable-component-update")
-chrome_options.add_argument("--disable-default-apps")
-chrome_options.add_argument("--disable-domain-reliability")
-chrome_options.add_argument("--disable-features=VizDisplayCompositor")
-chrome_options.add_argument("--disable-web-security")
-chrome_options.add_argument("--disable-features=VizServiceDisplayCompositor")
-chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+# Variáveis para controle de performance
+DRIVER_CREATION_TIME = 0
+LAST_DRIVER_CHECK = 0
+DRIVER_CHECK_INTERVAL = 30
 
-# Experimental options para supressão
-chrome_options.add_experimental_option('excludeSwitches', ['enable-logging', 'enable-automation'])
-chrome_options.add_experimental_option("useAutomationExtension", False)
+# Variáveis para estatísticas de tempo
+total_processing_time = 0
+total_items_processed = 0
+item_times = []
 
-# Suprime completamente stdout e stderr durante a inicialização
-null_output = io.StringIO()
 
-# Ajuste o path para o seu chromedriver
-with redirect_stderr(null_output), redirect_stdout(null_output):
+def create_chrome_driver():
+    """Cria uma nova instância do Chrome driver otimizada"""
+    chrome_options = Options()
+
+    # Opções essenciais e compatíveis
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--disable-logging")
+    chrome_options.add_argument("--log-level=3")
+    chrome_options.add_argument("--silent")
+
+    # Opções para melhor estabilidade e performance
+    chrome_options.add_argument("--disable-web-security")
+    chrome_options.add_argument("--disable-features=TranslateUI")
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+    chrome_options.add_argument("--disable-background-networking")
+    chrome_options.add_argument("--disable-default-apps")
+    chrome_options.add_argument("--disable-sync")
+    chrome_options.add_argument("--disable-translate")
+    chrome_options.add_argument("--hide-scrollbars")
+    chrome_options.add_argument("--disable-plugins")
+    chrome_options.add_argument("--disable-images")
+    chrome_options.add_argument("--disable-javascript-harmony")
+    chrome_options.add_argument("--memory-pressure-off")
+    chrome_options.add_argument("--max_old_space_size=4096")
+
+    # Novas opções para melhor performance
+    chrome_options.add_argument("--disable-software-rasterizer")
+    chrome_options.add_argument("--disable-background-timer-throttling")
+    chrome_options.add_argument("--disable-renderer-backgrounding")
+    chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+    chrome_options.add_argument("--disable-client-side-phishing-detection")
+    chrome_options.add_argument("--disable-crash-reporter")
+    chrome_options.add_argument("--disable-oopr-debug-crash-dump")
+    chrome_options.add_argument("--no-crash-upload")
+    chrome_options.add_argument("--disable-breakpad")
+    chrome_options.add_argument("--disable-component-update")
+    chrome_options.add_argument("--disable-default-apps")
+
+    # User agent para evitar detecção
+    chrome_options.add_argument(
+        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+    chrome_options.add_experimental_option('excludeSwitches', ['enable-logging', 'enable-automation'])
+    chrome_options.add_experimental_option("useAutomationExtension", False)
+
+    # Adiciona prefs para desabilitar notificações e popups
+    prefs = {
+        "profile.default_content_setting_values": {
+            "notifications": 2,
+            "popups": 2,
+            "media_stream": 2,
+        },
+        "profile.managed_default_content_settings.images": 2
+    }
+    chrome_options.add_experimental_option("prefs", prefs)
+
+    # Configuração do service
     service = Service(executable_path="chromedriver.exe")
-    service.creation_flags = 0x08000000  # CREATE_NO_WINDOW no Windows
-    driver = webdriver.Chrome(service=service, options=chrome_options)
 
-wait = WebDriverWait(driver, 15)
+    # Remove a flag problemática no Windows
+    try:
+        if os.name == 'nt':
+            service.creation_flags = 0x08000000
+    except:
+        pass
+
+    # Cria o driver com tratamento de erros melhorado
+    try:
+        null_output = io.StringIO()
+        with redirect_stderr(null_output), redirect_stdout(null_output):
+            new_driver = webdriver.Chrome(service=service, options=chrome_options)
+
+        # Configurações adicionais após criação
+        new_driver.set_page_load_timeout(15)
+        new_driver.implicitly_wait(3)
+
+        print("Chrome driver created successfully")
+        return new_driver
+
+    except Exception as e:
+        print(f"Error creating Chrome driver: {str(e)}")
+        print("Trying fallback configuration...")
+
+        # Configuração fallback mais simples
+        simple_options = Options()
+        simple_options.add_argument("--headless")
+        simple_options.add_argument("--no-sandbox")
+        simple_options.add_argument("--disable-dev-shm-usage")
+        simple_options.add_argument("--disable-gpu")
+
+        try:
+            fallback_driver = webdriver.Chrome(service=service, options=simple_options)
+            fallback_driver.set_page_load_timeout(15)
+            fallback_driver.implicitly_wait(3)
+            print("Fallback Chrome driver created successfully")
+            return fallback_driver
+        except Exception as fallback_error:
+            print(f"Fallback also failed: {str(fallback_error)}")
+            raise fallback_error
+
+
+def ensure_driver_alive():
+    """Garante que o driver está ativo, recriando se necessário"""
+    global driver, wait, LAST_DRIVER_CHECK, DRIVER_CREATION_TIME
+
+    current_time = time.time()
+
+    if current_time - LAST_DRIVER_CHECK < DRIVER_CHECK_INTERVAL:
+        return True
+
+    LAST_DRIVER_CHECK = current_time
+
+    try:
+        driver.title
+        return True
+    except (InvalidSessionIdException, WebDriverException, AttributeError):
+        print("Driver session lost, creating new driver...")
+        creation_start = time.time()
+
+        try:
+            if driver:
+                driver.quit()
+        except:
+            pass
+
+        driver = create_chrome_driver()
+        wait = WebDriverWait(driver, 8)
+
+        DRIVER_CREATION_TIME = time.time() - creation_start
+        print(f"New driver created in {DRIVER_CREATION_TIME:.2f}s")
+        return True
+    except Exception as e:
+        print(f"Error checking driver status: {str(e)}")
+        return False
+
+
+def safe_driver_action(action_func, *args, max_retries=2, **kwargs):
+    """Executa uma ação do driver com retry em caso de erro de sessão"""
+    global driver, wait
+
+    for attempt in range(max_retries):
+        try:
+            if not ensure_driver_alive():
+                time.sleep(0.5)
+                continue
+
+            return action_func(*args, **kwargs)
+
+        except (InvalidSessionIdException, WebDriverException) as e:
+            print(f"Driver error on attempt {attempt + 1}: {str(e)}")
+
+            if attempt < max_retries - 1:
+                print("Recreating driver and retrying...")
+                ensure_driver_alive()
+                time.sleep(0.5)
+            else:
+                print("Max retries reached, raising exception")
+                raise e
+        except Exception as e:
+            print(f"Non-driver error: {str(e)}")
+            raise e
+
+
+def safe_find_element(by, selector, context=None, max_retries=2):
+    """Encontra um elemento com proteção contra stale element reference"""
+    for attempt in range(max_retries):
+        try:
+            if context:
+                return context.find_element(by, selector)
+            else:
+                return driver.find_element(by, selector)
+        except Exception as e:
+            if "stale element reference" in str(e).lower() and attempt < max_retries - 1:
+                print(f"Stale element reference, retrying... (attempt {attempt + 1})")
+                time.sleep(0.5)
+                continue
+            raise e
+
+
+def safe_find_elements(by, selector, context=None, max_retries=2):
+    """Encontra elementos com proteção contra stale element reference"""
+    for attempt in range(max_retries):
+        try:
+            if context:
+                return context.find_elements(by, selector)
+            else:
+                return driver.find_elements(by, selector)
+        except Exception as e:
+            if "stale element reference" in str(e).lower() and attempt < max_retries - 1:
+                print(f"Stale element reference, retrying... (attempt {attempt + 1})")
+                time.sleep(0.5)
+                continue
+            raise e
+
+
+# Inicializa o driver
+driver = create_chrome_driver()
+wait = WebDriverWait(driver, 8)
 
 # Palavras-chave para cada tipo de produto
 PRODUCT_KEYWORDS = {
@@ -144,18 +321,19 @@ def collect_card_links(cards):
     for i, card in enumerate(cards):
         try:
             # Extrai dados básicos do card lateral (que não mudam)
-            link_element = card.find_element(By.CSS_SELECTOR, 'a.hfpxzc')
+            link_element = safe_find_element(By.CSS_SELECTOR, 'a.hfpxzc', context=card)
             href = link_element.get_attribute('href')
 
             # Nome do card lateral
             try:
-                name = card.find_element(By.CSS_SELECTOR, '.qBF1Pd.fontHeadlineSmall').text
+                name_element = safe_find_element(By.CSS_SELECTOR, '.qBF1Pd.fontHeadlineSmall', context=card)
+                name = name_element.text
             except:
                 name = None
 
             # Facilidades do card lateral
             try:
-                facility_elements = card.find_elements(By.CSS_SELECTOR, '.Yfjtfe.dc6iWb')
+                facility_elements = safe_find_elements(By.CSS_SELECTOR, '.Yfjtfe.dc6iWb', context=card)
                 facilities = [elem.get_attribute('aria-label') for elem in facility_elements if
                               elem.get_attribute('aria-label')]
             except:
@@ -176,396 +354,275 @@ def collect_card_links(cards):
 
 
 def extract_details_from_modal(product_type, card_info):
-    """Extrai detalhes do modal após clicar no card"""
-    try:
+    """Extrai detalhes do modal após clicar no card - OTIMIZADO"""
+
+    def _extract_logic():
         # Navega diretamente para o link do estabelecimento
         driver.get(card_info['href'])
-        time.sleep(4)
+        time.sleep(1.5)
 
-        # Nome do business (do modal)
-        try:
-            name_element = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'h1.DUwDvf, h1')))
-            name = name_element.text
-        except:
-            name = card_info['name_preview']  # Fallback para nome do card
-
-        # Rating (do modal)
-        try:
-            rating_element = driver.find_element(By.CSS_SELECTOR, '.F7nice span:first-child span[aria-hidden="true"]')
-            rating = rating_element.text
-        except:
-            rating = None
-
-        # Rating count (do modal - no elemento UY7F9)
-        try:
-            rating_count_element = driver.find_element(By.CSS_SELECTOR, '.UY7F9')
-            rating_count_text = rating_count_element.text
-            rating_count = remove_parentheses(rating_count_text)
-        except:
-            rating_count = None
-
-        # Stars (apenas para hotéis)
-        stars = None
-        if product_type.lower() == 'hotel':
-            try:
-                stars_element = driver.find_element(By.CSS_SELECTOR, '.LBgpqf span.mgr77e span span:last-child')
-                stars_text = stars_element.text
-                stars = extract_numbers_only(stars_text)
-            except:
-                stars = None
-
-        # Clica no botão "About" para acessar descrição e facilities
-        try:
-            about_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[aria-label*="About"]')))
-            driver.execute_script("arguments[0].click();", about_button)
-            time.sleep(3)  # Aguarda carregar o conteúdo do About
-        except Exception as e:
-            print(f"Could not click About button: {str(e)}")
-
-        # Descrição (após clicar em About)
-        description = ""
-        try:
-            # Múltiplos seletores para descrição (diferentes estruturas)
-            description_selectors = [
-                '.HeZRrf .P1LL5e',  # Para hotéis
-                '.PbZDve p .HlvSq',  # Para outros tipos
-                '.PbZDve .HlvSq',  # Variação para outros tipos
-                '.HeZRrf',  # Fallback geral
-                '.PbZDve p'  # Fallback para outros tipos
-            ]
-
-            for selector in description_selectors:
-                try:
-                    if selector == '.HeZRrf .P1LL5e':
-                        # Para múltiplos elementos P1LL5e
-                        description_elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                        if description_elements:
-                            desc_parts = [elem.text.strip() for elem in description_elements if elem.text.strip()]
-                            description = ' '.join(desc_parts)
-                            if description:
-                                break
-                    else:
-                        # Para seletor único
-                        description_element = driver.find_element(By.CSS_SELECTOR, selector)
-                        description_text = description_element.text.strip()
-                        if description_text and len(description_text) > 20:
-                            description = description_text
-                            break
-                except:
-                    continue
-
-        except Exception as e:
-            print(f"Could not extract description: {str(e)}")
-            description = ""
-
-        # Facilities (após clicar em About)
-        facilities = []
-        try:
-            # Para hotéis: busca facilities na estrutura .QoXOEc
-            if product_type.lower() == 'hotel':
-                facility_elements = driver.find_elements(By.CSS_SELECTOR, '.QoXOEc .CK16pd')
-                for facility_elem in facility_elements:
-                    try:
-                        # Verifica se não tem o símbolo G47vBd (que indica "não tem")
-                        has_unavailable_symbol = facility_elem.find_elements(By.CSS_SELECTOR, '.G47vBd')
-                        if not has_unavailable_symbol:  # Se não tem o símbolo de "não disponível"
-                            facility_text_elem = facility_elem.find_element(By.CSS_SELECTOR, '.gSamH')
-                            facility_text = facility_text_elem.text.strip()
-                            if facility_text:
-                                facilities.append(facility_text)
-                    except:
-                        continue
-
-            # Para outros tipos: busca facilities nas seções categorizadas
-            else:
-                facility_sections = driver.find_elements(By.CSS_SELECTOR, '.iP2t7d')
-                for section in facility_sections:
-                    try:
-                        facility_items = section.find_elements(By.CSS_SELECTOR, '.hpLkke .iNvpkb span[aria-label]')
-                        for item in facility_items:
-                            facility_text = item.get_attribute('aria-label')
-                            if facility_text:
-                                # Remove prefixos como "Has", "Good for", etc.
-                                clean_facility = re.sub(r'^(Has |Good for |Accepts |Getting )', '', facility_text)
-                                facilities.append(clean_facility)
-                    except:
-                        continue
-
-        except Exception as e:
-            print(f"Could not extract facilities: {str(e)}")
-            facilities = []
-
-        # Imagem principal
-        try:
-            img_element = driver.find_element(By.CSS_SELECTOR, 'img[src*="googleusercontent.com"]')
-            img = img_element.get_attribute('src')
-            images = [img] if img else []
-        except:
-            images = []
-
-        # Link do site (no modal)
-        try:
-            link_element = driver.find_element(By.CSS_SELECTOR, 'a[data-item-id="authority"]')
-            link = link_element.get_attribute('href')
-        except:
-            link = None
-
-        # Coordenadas (latitude/longitude)
-        try:
-            current_url = driver.current_url
-            if '@' in current_url:
-                coords_part = current_url.split('/@')[1].split(',')[:2]
-                lat = coords_part[0]
-                lon = coords_part[1]
-            else:
-                lat = None
-                lon = None
-        except:
-            lat = None
-            lon = None
-
-        # Horários de funcionamento
-        operating_hours = None
-        try:
-            hours_element = driver.find_element(By.CSS_SELECTOR, '.Io6YTe.fontBodyMedium.kR99db.fdkmkc')
-            hours_text = hours_element.text
-            if 'Check-in' in hours_text or 'Check-out' in hours_text:
-                operating_hours = hours_text
-        except:
-            pass
-
-        # Telefone
-        phone = None
-        try:
-            phone_element = driver.find_element(By.CSS_SELECTOR, 'button[data-item-id*="phone"] .Io6YTe')
-            phone = phone_element.text
-        except:
-            pass
-
-        # Endereço
-        address = None
-        try:
-            address_element = driver.find_element(By.CSS_SELECTOR, 'button[data-item-id="address"] .Io6YTe')
-            address = address_element.text
-        except:
-            pass
-
-        # Preço (específico por tipo de produto)
-        price = None
-        try:
-            if product_type.lower() in ['hotel', 'attraction']:
-                # Para hotéis e atrações: busca no botão com preço e período
-                try:
-                    price_button = driver.find_element(By.CSS_SELECTOR,
-                                                       'button[aria-label*="R$"], button[aria-label*="$"], button[aria-label*="€"]')
-                    price_aria_label = price_button.get_attribute('aria-label')
-                    # Extrai o preço do aria-label
-                    price_match = re.search(r'(R\$\d+|€\d+|\$\d+)', price_aria_label)
-                    if price_match:
-                        price = price_match.group(1)
-                except:
-                    # Fallback: busca diretamente no span com classe do preço
-                    try:
-                        price_element = driver.find_element(By.CSS_SELECTOR,
-                                                            '.fontTitleLarge.Cbys4b, .dkgw2 .fontTitleLarge')
-                        price = price_element.text
-                    except:
-                        pass
-
-            elif product_type.lower() == 'gastronomy':
-                # Para gastronomia: busca na seção de faixa de preço
-                try:
-                    price_element = driver.find_element(By.CSS_SELECTOR, '.MNVeJb.eXOdV.eF9eN.PnPrlf')
-                    price_text = price_element.text
-                    # Extrai a faixa de preço (ex: €20–40 per person)
-                    price_match = re.search(r'(€\d+–\d+|R\$\d+–\d+|\$\d+–\d+|\+?[€R\$]\d+)', price_text)
-                    if price_match:
-                        price = price_match.group(1)
-                except:
-                    pass
-
-            elif product_type.lower() == 'activity':
-                # Para atividades: busca nos cards de ofertas
-                try:
-                    price_elements = driver.find_elements(By.CSS_SELECTOR, '.apD3Md, .W0by1 .apD3Md')
-                    if price_elements:
-                        # Pega o primeiro preço encontrado
-                        price = price_elements[0].text
-                except:
-                    pass
-
-            # Se não encontrou preço específico, busca genérica por padrões monetários
-            if not price:
-                # Busca genérica por elementos que contenham símbolos monetários
-                monetary_patterns = [
-                    r'R\$\s*\d+(?:[.,]\d+)*',
-                    r'€\s*\d+(?:[.,]\d+)*',
-                    r'\$\s*\d+(?:[.,]\d+)*',
-                    r'\d+\s*€',
-                    r'\d+\s*R\$',
-                    r'\d+\s*\$'
-                ]
-
-                page_text = driver.find_element(By.TAG_NAME, 'body').text
-                for pattern in monetary_patterns:
-                    matches = re.findall(pattern, page_text)
-                    if matches:
-                        price = matches[0]
-                        break
-
-        except Exception as e:
-            print(f"Could not extract price: {str(e)}")
-            price = None
-
-        # Monta o resultado
         result = {
-            "name": name,
-            "rating": rating,
-            "rating_count": rating_count,
-            "description": description,
-            "images": images,
-            "link": link,
-            "facilities": facilities,  # Usa as facilidades extraídas do About
-            "lat": lat,
-            "lon": lon,
-            "phone": phone,
-            "address": address,
-            "price": price,  # Novo campo para preço
-            "operating_hours": operating_hours
+            "name": card_info.get('name_preview'),
+            "rating": None,
+            "rating_count": None,
+            "description": "",
+            "images": [],
+            "link": None,
+            "facilities": card_info.get('facilities', []),
+            "lat": None,
+            "lon": None,
+            "phone": None,
+            "address": None,
+            "price": None,
+            "operating_hours": None
         }
 
-        # Adiciona stars apenas para hotéis
-        if product_type.lower() == 'hotel':
-            result["stars"] = stars
+        try:
+            # Nome
+            try:
+                name_element = safe_find_element(By.CSS_SELECTOR, 'h1.DUwDvf, h1')
+                result["name"] = name_element.text
+            except:
+                pass
+
+            # Rating
+            try:
+                rating_element = safe_find_element(By.CSS_SELECTOR, '.F7nice span:first-child span[aria-hidden="true"]')
+                result["rating"] = rating_element.text
+            except:
+                pass
+
+            # Rating count
+            try:
+                rating_count_element = safe_find_element(By.CSS_SELECTOR, '.UY7F9')
+                rating_count_text = rating_count_element.text
+                result["rating_count"] = remove_parentheses(rating_count_text)
+            except:
+                pass
+
+            # Stars (apenas para hotéis)
+            if product_type.lower() == 'hotel':
+                try:
+                    stars_element = safe_find_element(By.CSS_SELECTOR, '.LBgpqf span.mgr77e span span:last-child')
+                    stars_text = stars_element.text
+                    result["stars"] = extract_numbers_only(stars_text)
+                except:
+                    pass
+
+            # Preço (APENAS para hotéis)
+            if product_type.lower() == 'hotel':
+                try:
+                    price_button = safe_find_element(By.CSS_SELECTOR,
+                                                     'button[aria-label*="R$"], button[aria-label*="$"], button[aria-label*="€"]')
+                    price_aria_label = price_button.get_attribute('aria-label')
+                    price_match = re.search(r'(R\$\d+|€\d+|\$\d+)', price_aria_label)
+                    if price_match:
+                        result["price"] = price_match.group(1)
+                except:
+                    pass
+
+            # Link do site
+            try:
+                link_element = safe_find_element(By.CSS_SELECTOR, 'a[data-item-id="authority"]')
+                result["link"] = link_element.get_attribute('href')
+            except:
+                pass
+
+            # Coordenadas
+            try:
+                current_url = driver.current_url
+                if '@' in current_url:
+                    coords_part = current_url.split('/@')[1].split(',')[:2]
+                    result["lat"] = coords_part[0]
+                    result["lon"] = coords_part[1]
+            except:
+                pass
+
+            # Telefone
+            try:
+                phone_element = safe_find_element(By.CSS_SELECTOR, 'button[data-item-id*="phone"] .Io6YTe')
+                result["phone"] = phone_element.text
+            except:
+                pass
+
+            # Endereço
+            try:
+                address_element = safe_find_element(By.CSS_SELECTOR, 'button[data-item-id="address"] .Io6YTe')
+                result["address"] = address_element.text
+            except:
+                pass
+
+            # Descrição (busca rápida sem clicar em About)
+            try:
+                description_element = safe_find_element(By.CSS_SELECTOR, '.Io6YTe.fontBodyMedium, .fontBodyMedium')
+                result["description"] = description_element.text[:200] + "..." if len(
+                    description_element.text) > 200 else description_element.text
+            except:
+                pass
+
+            # Imagem principal
+            try:
+                img_element = safe_find_element(By.CSS_SELECTOR, 'img[src*="googleusercontent.com"]')
+                img = img_element.get_attribute('src')
+                result["images"] = [img] if img else []
+            except:
+                pass
+
+        except Exception as e:
+            print(f"Error extracting details: {str(e)}")
 
         return result
 
-    except Exception as e:
-        print(f"Error extracting details from modal: {str(e)}")
-        return None
-
-
-def scrape_google_maps_with_keyword(product_type, location, search_term, max_results=10):
-    """Faz o scraping para um termo de busca específico"""
-    query = f"{search_term} {location}"
-    url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}/?hl=en&gl=us"
-    driver.get(url)
-
-    # Espera carregar a lista de resultados
-    time.sleep(5)
-
-    # Scroll na lista lateral para carregar mais resultados com controle melhorado
     try:
-        results_panel = driver.find_element(By.CSS_SELECTOR, 'div[role="feed"]')
+        return _extract_logic()
+    except (InvalidSessionIdException, WebDriverException):
+        ensure_driver_alive()
+        time.sleep(0.5)
+        return _extract_logic()
+    except Exception as e:
+        print(f"Error extracting details: {str(e)}")
+        return {
+            "name": card_info.get('name_preview'),
+            "rating": None,
+            "rating_count": None,
+            "description": "",
+            "images": [],
+            "link": None,
+            "facilities": card_info.get('facilities', []),
+            "lat": None,
+            "lon": None,
+            "phone": None,
+            "address": None,
+            "price": None,
+            "operating_hours": None
+        }
 
-        previous_count = 0
-        stagnant_iterations = 0
-        max_stagnant = 3  # Máximo de iterações sem novos resultados
 
-        while True:
+def load_more_cards_optimized(results_panel, current_count, max_stagnant=3):
+    """Carrega mais cards usando a abordagem do código antigo - OTIMIZADO"""
+    stagnant_iterations = 0
+    previous_count = current_count
+
+    print(f"Loading more cards...")
+
+    while True:
+        try:
             # Scroll até o final da lista
             driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", results_panel)
-            time.sleep(3)  # Tempo maior para o lazy loading
+            time.sleep(2.0)  # Reduzido de 3 para 2 segundos
 
             # Conta quantos cards existem agora
-            current_cards = driver.find_elements(By.CSS_SELECTOR, 'div.Nv2PK.THOPZb.CpccDe')
-            current_count = len(current_cards)
+            current_cards = safe_find_elements(By.CSS_SELECTOR, 'div.Nv2PK.THOPZb.CpccDe')
+            new_count = len(current_cards)
 
-            print(f"Current cards loaded: {current_count}")
-
-            # Se chegou ao limite desejado, para
-            if current_count >= max_results:
-                print(f"Reached desired limit of {max_results} results")
-                break
+            print(f"Cards loaded: {new_count}")
 
             # Se não carregou novos cards, incrementa contador de estagnação
-            if current_count == previous_count:
+            if new_count == previous_count:
                 stagnant_iterations += 1
                 if stagnant_iterations >= max_stagnant:
-                    print(f"No more results loading. Final count: {current_count}")
-                    break
+                    print(f"No more cards to load. Total: {new_count}")
+                    return new_count, True
                 # Tenta scroll mais agressivo quando não carrega
-                for _ in range(3):
+                for _ in range(2):  # Reduzido de 3 para 2
                     driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", results_panel)
-                    time.sleep(1)
+                    time.sleep(1.0)  # Reduzido de 1 para 0.8
             else:
                 stagnant_iterations = 0  # Reset contador se carregou novos
 
-            previous_count = current_count
+            previous_count = new_count
 
-            # Scroll adicional para garantir que o lazy loading seja ativado
+            # Scroll adicional para garantir carregamento
             driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight - 100", results_panel)
-            time.sleep(1)
+            time.sleep(0.8)  # Reduzido de 1 para 0.8
             driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", results_panel)
-            time.sleep(2)
+            time.sleep(1.5)  # Reduzido de 2 para 1.5
 
-    except Exception as e:
-        print(f"Error during scrolling: {str(e)}")
+        except Exception as e:
+            if "stale element reference" in str(e).lower():
+                print("Stale element, recreating results_panel...")
+                try:
+                    results_panel = safe_find_element(By.CSS_SELECTOR, 'div[role="feed"]')
+                    continue
+                except:
+                    print("Could not recreate results_panel")
+                    return previous_count, True
+            else:
+                print(f"Error during scrolling: {str(e)}")
+                return previous_count, True
 
-    # FASE 1: Coleta todos os links e dados básicos dos cards iniciais
-    print("Collecting initial card links and basic data...")
-    cards = driver.find_elements(By.CSS_SELECTOR, 'div.Nv2PK.THOPZb.CpccDe')
-    card_data_list = collect_card_links(cards)
 
-    # FASE 2: Processa os cards até encontrar o limite de novos registros
+def scrape_google_maps_with_keyword(product_type, location, search_term, max_results=None):
+    """Faz o scraping para um termo de busca específico - ABORDAGEM ORIGINAL OTIMIZADA"""
+    global total_processing_time, total_items_processed, item_times
+
+    def _navigate_to_search():
+        query = f"{search_term} {location}"
+        url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}/?hl=en&gl=us"
+        driver.get(url)
+        time.sleep(3.0)  # Reduzido de 5 para 3 segundos
+
+    safe_driver_action(_navigate_to_search)
+
+    # FASE 1: Carregamento de todos os cards possíveis
+    try:
+        results_panel = safe_find_element(By.CSS_SELECTOR, 'div[role="feed"]')
+    except NoSuchElementException:
+        print(f"No results found for search term: '{search_term}'")
+        return []
+
+    print(f"Loading all available cards for: '{search_term}'")
+
+    # Carrega cards iniciais
+    initial_cards = safe_find_elements(By.CSS_SELECTOR, 'div.Nv2PK.THOPZb.CpccDe')
+    current_count = len(initial_cards)
+    print(f"Initial cards: {current_count}")
+
+    # Carrega TODOS os cards disponíveis (como no código antigo)
+    total_count, finished = load_more_cards_optimized(results_panel, current_count)
+    print(f"Total cards available: {total_count}")
+
+    # Coleta os links de TODOS os cards
+    def _collect_all_cards():
+        cards = safe_find_elements(By.CSS_SELECTOR, 'div.Nv2PK.THOPZb.CpccDe')
+        return collect_card_links(cards)
+
+    card_data_list = safe_driver_action(_collect_all_cards)
+    total_available = len(card_data_list)
+    print(f"Cards collected for processing: {total_available}")
+
+    # Determina quantos cards processar
+    if max_results is not None:
+        cards_to_process = min(max_results, total_available)
+        print(f"Will process {cards_to_process} cards (limited by max_results={max_results})")
+    else:
+        cards_to_process = total_available
+        print(f"Will process ALL {cards_to_process} cards (no limit specified)")
+
+    # FASE 2: Processamento dos cards
     results = []
     db = DatabaseManager()
-    processed_count = 0  # Contador para novos registros processados
-    card_index = 0  # Índice atual na lista de cards
+    processed_count = 0
+    new_records_count = 0
 
-    while processed_count < max_results:
-        # Se chegou ao fim da lista de cards, carrega mais
-        if card_index >= len(card_data_list):
-            try:
-                # Volta para a página de busca original para carregar mais
-                driver.get(url)
-                time.sleep(3)
+    ensure_driver_alive()
 
-                # Scroll mais cards
-                results_panel = driver.find_element(By.CSS_SELECTOR, 'div[role="feed"]')
-
-                # Scroll mais agressivo para carregar ainda mais resultados
-                scroll_attempts = 10  # Aumenta tentativas de scroll
-                for scroll in range(scroll_attempts):
-                    driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", results_panel)
-                    time.sleep(2)
-
-                    # Verifica se carregou novos cards
-                    current_cards = driver.find_elements(By.CSS_SELECTOR, 'div.Nv2PK.THOPZb.CpccDe')
-                    if len(current_cards) > len(card_data_list):
-                        break
-
-                # Coleta novos cards
-                new_cards = driver.find_elements(By.CSS_SELECTOR, 'div.Nv2PK.THOPZb.CpccDe')
-                new_card_data = collect_card_links(new_cards)
-
-                # Se não encontrou novos cards suficientes, para
-                if len(new_card_data) <= len(card_data_list):
-                    print("No more cards available to load")
-                    break
-
-                card_data_list = new_card_data
-                print(f"Loaded more cards. Total available: {len(card_data_list)}")
-
-            except Exception as e:
-                print(f"Error loading more cards: {str(e)}")
-                print("Continuing with available cards...")
-                # Se não conseguir carregar mais, continua com os cards disponíveis
-                if card_index >= len(card_data_list):
-                    break
-
-        # Se ainda não tem cards suficientes, para
-        if card_index >= len(card_data_list):
-            print("Reached end of available cards")
-            break
-
+    for card_index in range(cards_to_process):
         card_info = card_data_list[card_index]
-        print(
-            f"Processing item {card_index + 1}/{len(card_data_list)} (New records found: {processed_count}/{max_results})...")
+
+        item_start_time = time.time()
+        print(f"Processing card {card_index + 1}/{cards_to_process} (New records: {new_records_count})...")
 
         result = extract_details_from_modal(product_type, card_info)
+
+        item_time = time.time() - item_start_time
+        item_times.append(item_time)
+        total_processing_time += item_time
+        total_items_processed += 1
+
+        print(f"  Item processed in {item_time:.2f}s (Avg: {total_processing_time / total_items_processed:.2f}s)")
+
         if result:
-            # Verifica se já existe no banco com mesmo nome, latitude, longitude e product_type
             existing_record = None
             if result.get('name') and result.get('lat') and result.get('lon'):
                 existing_records = db.get(
@@ -576,10 +633,8 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
                     existing_record = existing_records[0]
 
             if existing_record:
-                # Se existe no banco, atualiza com os dados do scraper
                 print(f"Found existing record with ID: {existing_record['id']} - updating with new data")
 
-                # Prepara os dados para atualização no banco
                 update_data = {
                     'name': result.get('name'),
                     'description': result.get('description'),
@@ -595,14 +650,11 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
                     'price': result.get('price')
                 }
 
-                # Adiciona stars apenas para hotéis
                 if product_type.lower() == 'hotel':
                     update_data['stars'] = int(result.get('stars')) if result.get('stars') else None
 
-                # Atualiza o registro no banco
                 db.update(existing_record['id'], update_data)
 
-                # Converte os dados do scraper para o formato JSON (ao invés dos dados do banco)
                 json_result = {
                     "name": result.get('name'),
                     "rating": result.get('rating'),
@@ -620,16 +672,12 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
                     "db_id": existing_record['id']
                 }
 
-                # Adiciona stars apenas para hotéis
                 if product_type.lower() == 'hotel':
                     json_result["stars"] = result.get('stars')
 
                 results.append(json_result)
-                # NÃO incrementa processed_count pois registro existente não conta no limite
 
             else:
-                # Se não existe, processa normalmente e insere no banco
-                # Prepara os dados para inserção no banco
                 db_data = {
                     'product_type': product_type,
                     'name': result.get('name'),
@@ -646,95 +694,119 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
                     'price': result.get('price')
                 }
 
-                # Adiciona stars apenas para hotéis
                 if product_type.lower() == 'hotel':
                     db_data['stars'] = int(result.get('stars')) if result.get('stars') else None
 
-                # Insere no banco de dados
                 record_id = db.create(db_data)
                 if record_id:
                     result['db_id'] = record_id
                     print(f"New record saved with ID: {record_id}")
+                    new_records_count += 1
 
                 results.append(result)
-                processed_count += 1  # Incrementa contador apenas para novos registros
-                print(f"Progress: {processed_count}/{max_results} new records processed")
 
-        card_index += 1
-        # Pequena pausa entre requisições
-        time.sleep(1)
+        processed_count += 1
+
+        time.sleep(0.3)  # Reduzido de 1 para 0.3 segundos
+
+        if processed_count % 10 == 0:
+            ensure_driver_alive()
+
+    print(f"Completed processing {processed_count} cards for search term '{search_term}'")
+    print(f"New records created: {new_records_count}")
+    print(f"Total results: {len(results)}")
 
     return results
 
 
-def scrape_google_maps(product_type, location, max_results=10):
-    """Função principal que executa o scraping com o product_type e suas palavras-chave"""
+def scrape_google_maps(product_type, location, max_results=None):
+    """Função principal que executa o scraping com limite opcional"""
+    global total_processing_time, total_items_processed, item_times
+
+    total_processing_time = 0
+    total_items_processed = 0
+    item_times = []
+
     all_results = []
+    search_start_time = time.time()
 
-    # Lista de termos de busca: product_type + suas palavras-chave
-    search_terms = [product_type]  # Começa com o próprio product_type
-
-    # Adiciona as palavras-chave se existirem para o product_type
+    # TODAS as palavras-chave originais
+    search_terms = [product_type]
     if product_type in PRODUCT_KEYWORDS:
         search_terms.extend(PRODUCT_KEYWORDS[product_type])
 
-    print(f"Starting scraping for product_type: {product_type}")
-    print(f"Search terms to process: {search_terms}")
-    print(f"Total searches to perform: {len(search_terms)}")
+    print(f"Starting scraping for: {product_type}")
+    print(f"Total search terms: {len(search_terms)}")
     print("=" * 60)
 
-    # Executa o scraping para cada termo de busca
     for i, search_term in enumerate(search_terms, 1):
-        print(f"\n[SEARCH {i}/{len(search_terms)}] Processing search term: '{search_term}'")
-        print("-" * 40)
+        term_start_time = time.time()
+        print(f"\n[{i}/{len(search_terms)}] Processing search term: '{search_term}'")
+        print("-" * 50)
 
         try:
             results = scrape_google_maps_with_keyword(product_type, location, search_term, max_results)
             all_results.extend(results)
-
-            # Conta novos registros nesta iteração
-            new_records_in_iteration = sum(1 for item in results if 'db_id' in item and
-                                           not any(existing.get('db_id') == item['db_id'] and existing != item
-                                                   for existing in all_results[:-len(results)]))
-            existing_records_in_iteration = len(results) - new_records_in_iteration
-
-            print(f"Search '{search_term}' completed:")
-            print(f"- New records: {new_records_in_iteration}")
-            print(f"- Existing records: {existing_records_in_iteration}")
-            print(f"- Total results: {len(results)}")
+            term_time = time.time() - term_start_time
+            print(f"Search '{search_term}' completed in {term_time:.2f}s: {len(results)} results")
 
         except Exception as e:
             print(f"Error processing search term '{search_term}': {str(e)}")
             continue
 
-    print("\n" + "=" * 60)
+    total_time = time.time() - search_start_time
+    print(f"\n{'=' * 60}")
     print("ALL SEARCHES COMPLETED")
+    print(f"Total execution time: {total_time:.2f}s")
     print(f"Total results collected: {len(all_results)}")
+
+    if item_times:
+        avg_time = sum(item_times) / len(item_times)
+        max_time = max(item_times)
+        min_time = min(item_times)
+        print(f"\nTime statistics:")
+        print(f"- Total items processed: {len(item_times)}")
+        print(f"- Average time per item: {avg_time:.2f}s")
+        print(f"- Fastest item: {min_time:.2f}s")
+        print(f"- Slowest item: {max_time:.2f}s")
+        print(f"- Total processing time: {sum(item_times):.2f}s")
 
     return all_results
 
 
 if __name__ == "__main__":
     allowed_types = ['hotel', 'gastronomy', 'attraction', 'shopping', 'activity']
-    product_type = input("Enter product type (hotel, gastronomy, attraction, shopping or activity.): ")
+    product_type = input("Enter product type (hotel, gastronomy, attraction, shopping, activity): ")
 
     if product_type not in allowed_types:
         logging.error("Not allowed product type")
-        driver.quit()
+        try:
+            driver.quit()
+        except:
+            pass
         exit(1)
 
     location = input("Enter location (city/state/country): ")
-    max_results = int(input("Enter max results per search term (default 10): ") or 10)
+
+    max_results_input = input("Enter max results per search term (leave empty for all): ").strip()
+    max_results = int(max_results_input) if max_results_input else None
 
     try:
+        overall_start_time = time.time()
         data = scrape_google_maps(product_type, location, max_results)
+        overall_time = time.time() - overall_start_time
+
         file_name = f"{product_type}.json"
-
         with open(file_name, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
+            json.dump(data, f, ensure_ascii=False, indent=2)
 
-        print(f"\nSearch completed! {len(data)} total results saved to {file_name} and database")
-        print(f"Results breakdown:")
+        print(f"\n{'=' * 80}")
+        print("FINAL EXECUTION SUMMARY")
+        print(f"{'=' * 80}")
+        print(f"Total execution time: {overall_time:.2f}s")
+        print(f"Total results saved: {len(data)}")
+        print(f"Results saved to: {file_name}")
+        print(f"{'=' * 80}")
 
         # Conta registros novos vs existentes no total
         unique_db_ids = set()
@@ -744,12 +816,14 @@ if __name__ == "__main__":
         for item in data:
             if 'db_id' in item:
                 if item['db_id'] not in unique_db_ids:
-                    # Verifica se este é um registro novo ou existente baseado em outros critérios
-                    # Como não temos essa informação direta, assumimos que registros únicos por db_id são válidos
                     unique_db_ids.add(item['db_id'])
+                    new_records_count += 1
+                else:
+                    existing_records_count += 1
 
-        # Simplifica a contagem: todos os resultados são válidos
-        print(f"- Total unique results: {len(data)}")
+        print(f"New records: {new_records_count}")
+        print(f"Existing records: {existing_records_count}")
+        print(f"Total unique results: {len(data)}")
 
         # Exemplo de uso das funções do banco de dados
         db = DatabaseManager()
@@ -768,11 +842,20 @@ if __name__ == "__main__":
             search_terms.extend(PRODUCT_KEYWORDS[product_type])
 
         print(f"\nKeywords used for '{product_type}':")
-        for term in search_terms:
+        for term in search_terms[:10]:  # Mostra apenas as primeiras 10 para não poluir
             print(f"- {term}")
+        if len(search_terms) > 10:
+            print(f"- ... and {len(search_terms) - 10} more keywords")
 
     except Exception as e:
         print(f"Error during execution: {str(e)}")
+        import traceback
+
+        traceback.print_exc()
 
     finally:
-        driver.quit()
+        try:
+            driver.quit()
+            print("Driver closed successfully")
+        except Exception as e:
+            print(f"Error closing driver: {str(e)}")
