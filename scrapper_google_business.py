@@ -904,8 +904,8 @@ if __name__ == "__main__":
 
     location = input("Enter location (city/state/country): ")
 
-    max_results_input = input("Enter max results per search term (leave empty for all): ").strip()
-    max_results = int(max_results_input) if max_results_input else None
+    # max_results_input = input("Enter max results per search term (leave empty for all): ").strip()
+    max_results = None
 
     try:
         overall_start_time = time.time()
