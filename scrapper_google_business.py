@@ -39,6 +39,10 @@ total_processing_time = 0
 total_items_processed = 0
 item_times = []
 
+# Cache para evitar processamento duplicado
+processed_urls_cache = set()
+CACHE_ENABLED = True
+
 
 def create_chrome_driver():
     """Cria uma nova instância do Chrome driver otimizada"""
@@ -188,7 +192,7 @@ def safe_driver_action(action_func, *args, max_retries=2, **kwargs):
     for attempt in range(max_retries):
         try:
             if not ensure_driver_alive():
-                time.sleep(0.5)
+                time.sleep(0.3)  # Reduzido de 0.5 para 0.3
                 continue
 
             return action_func(*args, **kwargs)
@@ -199,7 +203,7 @@ def safe_driver_action(action_func, *args, max_retries=2, **kwargs):
             if attempt < max_retries - 1:
                 print("Recreating driver and retrying...")
                 ensure_driver_alive()
-                time.sleep(0.5)
+                time.sleep(0.3)  # Reduzido de 0.5 para 0.3
             else:
                 print("Max retries reached, raising exception")
                 raise e
@@ -219,7 +223,7 @@ def safe_find_element(by, selector, context=None, max_retries=2):
         except Exception as e:
             if "stale element reference" in str(e).lower() and attempt < max_retries - 1:
                 print(f"Stale element reference, retrying... (attempt {attempt + 1})")
-                time.sleep(0.5)
+                time.sleep(0.3)  # Reduzido de 0.5 para 0.3
                 continue
             raise e
 
@@ -235,7 +239,7 @@ def safe_find_elements(by, selector, context=None, max_retries=2):
         except Exception as e:
             if "stale element reference" in str(e).lower() and attempt < max_retries - 1:
                 print(f"Stale element reference, retrying... (attempt {attempt + 1})")
-                time.sleep(0.5)
+                time.sleep(0.3)  # Reduzido de 0.5 para 0.3
                 continue
             raise e
 
@@ -324,6 +328,10 @@ def collect_card_links(cards):
             link_element = safe_find_element(By.CSS_SELECTOR, 'a.hfpxzc', context=card)
             href = link_element.get_attribute('href')
 
+            # Verifica se já processamos esta URL
+            if CACHE_ENABLED and href in processed_urls_cache:
+                continue
+
             # Nome do card lateral
             try:
                 name_element = safe_find_element(By.CSS_SELECTOR, '.qBF1Pd.fontHeadlineSmall', context=card)
@@ -346,6 +354,10 @@ def collect_card_links(cards):
                 'facilities': facilities
             })
 
+            # Adiciona ao cache
+            if CACHE_ENABLED:
+                processed_urls_cache.add(href)
+
         except Exception as e:
             print(f"Error collecting data from card {i + 1}: {str(e)}")
             continue
@@ -353,56 +365,72 @@ def collect_card_links(cards):
     return card_data
 
 
-def extract_details_from_modal(product_type, card_info):
-    """Extrai detalhes do modal após clicar no card - BASEADO NO CÓDIGO ANTIGO"""
+def extract_details_from_modal_optimized(product_type, card_info):
+    """Versão otimizada da extração de detalhes do modal"""
+    start_time = time.time()
 
     def _extract_logic():
         # Navega diretamente para o link do estabelecimento
         driver.get(card_info['href'])
-        time.sleep(2.5)
+        time.sleep(1.8)  # Reduzido de 2.5 para 1.8
+
+        # Extrai informações básicas primeiro (mais importantes)
+        result = {
+            "name": card_info.get('name_preview'),
+            "rating": None,
+            "rating_count": None,
+            "description": "",
+            "images": [],
+            "link": None,
+            "facilities": card_info.get('facilities', []),
+            "lat": None,
+            "lon": None,
+            "phone": None,
+            "address": None,
+            "price": None,
+            "operating_hours": None
+        }
 
         # Nome do business (do modal)
         try:
             name_element = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'h1.DUwDvf, h1')))
-            name = name_element.text
+            result["name"] = name_element.text
         except:
-            name = card_info['name_preview']  # Fallback para nome do card
+            pass
 
         # Rating (do modal)
         try:
             rating_element = driver.find_element(By.CSS_SELECTOR, '.F7nice span:first-child span[aria-hidden="true"]')
-            rating = rating_element.text
+            result["rating"] = rating_element.text
         except:
-            rating = None
+            pass
 
         # Rating count (do modal - no elemento UY7F9)
         try:
             rating_count_element = driver.find_element(By.CSS_SELECTOR, '.UY7F9')
             rating_count_text = rating_count_element.text
-            rating_count = remove_parentheses(rating_count_text)
+            result["rating_count"] = remove_parentheses(rating_count_text)
         except:
-            rating_count = None
+            pass
 
         # Stars (apenas para hotéis)
-        stars = None
         if product_type.lower() == 'hotel':
             try:
                 stars_element = driver.find_element(By.CSS_SELECTOR, '.LBgpqf span.mgr77e span span:last-child')
                 stars_text = stars_element.text
-                stars = extract_numbers_only(stars_text)
+                result["stars"] = extract_numbers_only(stars_text)
             except:
-                stars = None
+                result["stars"] = None
 
-        # Clica no botão "About" para acessar descrição e facilities (COMO NO CÓDIGO ANTIGO)
+        # Clica no botão "About" para acessar descrição e facilities
         try:
             about_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[aria-label*="About"]')))
             driver.execute_script("arguments[0].click();", about_button)
-            time.sleep(2.0)
+            time.sleep(1.2)  # Reduzido de 2.0 para 1.2
         except Exception as e:
             print(f"Could not click About button: {str(e)}")
 
-        # Descrição (após clicar em About) - COMO NO CÓDIGO ANTIGO
-        description = ""
+        # Descrição (após clicar em About)
         try:
             description_selectors = [
                 '.HeZRrf .P1LL5e',
@@ -418,24 +446,22 @@ def extract_details_from_modal(product_type, card_info):
                         description_elements = driver.find_elements(By.CSS_SELECTOR, selector)
                         if description_elements:
                             desc_parts = [elem.text.strip() for elem in description_elements if elem.text.strip()]
-                            description = ' '.join(desc_parts)
-                            if description:
+                            result["description"] = ' '.join(desc_parts)
+                            if result["description"]:
                                 break
                     else:
                         description_element = driver.find_element(By.CSS_SELECTOR, selector)
                         description_text = description_element.text.strip()
                         if description_text and len(description_text) > 20:
-                            description = description_text
+                            result["description"] = description_text
                             break
                 except:
                     continue
 
         except Exception as e:
             print(f"Could not extract description: {str(e)}")
-            description = ""
 
-        # Facilities (após clicar em About) - COMO NO CÓDIGO ANTIGO
-        facilities = []
+        # Facilities (após clicar em About)
         try:
             if product_type.lower() == 'hotel':
                 facility_elements = driver.find_elements(By.CSS_SELECTOR, '.QoXOEc .CK16pd')
@@ -446,7 +472,7 @@ def extract_details_from_modal(product_type, card_info):
                             facility_text_elem = facility_elem.find_element(By.CSS_SELECTOR, '.gSamH')
                             facility_text = facility_text_elem.text.strip()
                             if facility_text:
-                                facilities.append(facility_text)
+                                result["facilities"].append(facility_text)
                     except:
                         continue
             else:
@@ -458,64 +484,59 @@ def extract_details_from_modal(product_type, card_info):
                             facility_text = item.get_attribute('aria-label')
                             if facility_text:
                                 clean_facility = re.sub(r'^(Has |Good for |Accepts |Getting )', '', facility_text)
-                                facilities.append(clean_facility)
+                                result["facilities"].append(clean_facility)
                     except:
                         continue
 
         except Exception as e:
             print(f"Could not extract facilities: {str(e)}")
-            facilities = []
 
-        # Imagem principal
-        try:
-            img_element = driver.find_element(By.CSS_SELECTOR, 'img[src*="googleusercontent.com"]')
-            img = img_element.get_attribute('src')
-            images = [img] if img else []
-        except:
-            images = []
+        # Extrai informações adicionais de forma otimizada
+        processing_time = time.time() - start_time
 
-        # Link do site (no modal)
-        try:
-            link_element = driver.find_element(By.CSS_SELECTOR, 'a[data-item-id="authority"]')
-            link = link_element.get_attribute('href')
-        except:
-            link = None
-
-        # Coordenadas (latitude/longitude) - MELHORADO
-        lat = None
-        lon = None
+        # Coordenadas (latitude/longitude) - Rápido
         try:
             current_url = driver.current_url
             if '@' in current_url:
                 coords_match = re.search(r'@(-?\d+\.\d+),(-?\d+\.\d+)', current_url)
                 if coords_match:
-                    lat = coords_match.group(1)
-                    lon = coords_match.group(2)
+                    result["lat"] = coords_match.group(1)
+                    result["lon"] = coords_match.group(2)
         except:
             pass
 
-        # Telefone - MELHORADO
-        phone = None
+        # Telefone e endereço - Rápido
         try:
             phone_elements = driver.find_elements(By.CSS_SELECTOR, 'button[data-item-id*="phone"] .Io6YTe')
             if phone_elements:
-                phone = phone_elements[0].text
-        except:
-            pass
+                result["phone"] = phone_elements[0].text
 
-        # Endereço - MELHORADO
-        address = None
-        try:
             address_elements = driver.find_elements(By.CSS_SELECTOR, 'button[data-item-id="address"] .Io6YTe')
             if address_elements:
-                address = address_elements[0].text
+                result["address"] = address_elements[0].text
         except:
             pass
 
-        # Preço (APENAS para hotéis) - MELHORADO
-        price = None
-        if product_type.lower() == 'hotel':
+        # Informações de menor prioridade só se ainda temos tempo
+        if processing_time < 25:
+            # Imagem principal
             try:
+                img_element = driver.find_element(By.CSS_SELECTOR, 'img[src*="googleusercontent.com"]')
+                img = img_element.get_attribute('src')
+                result["images"] = [img] if img else []
+            except:
+                pass
+
+            # Link do site
+            try:
+                link_element = driver.find_element(By.CSS_SELECTOR, 'a[data-item-id="authority"]')
+                result["link"] = link_element.get_attribute('href')
+            except:
+                pass
+
+        if processing_time < 30:
+            # Preço (APENAS para hotéis)
+            if product_type.lower() == 'hotel':
                 try:
                     price_buttons = driver.find_elements(By.CSS_SELECTOR,
                                                          'button[aria-label*="R$"], button[aria-label*="$"], button[aria-label*="€"]')
@@ -524,60 +545,24 @@ def extract_details_from_modal(product_type, card_info):
                             price_aria_label = button.get_attribute('aria-label')
                             price_match = re.search(r'(R\$\d+[\d,.]*|€\d+[\d,.]*|\$\d+[\d,.]*)', price_aria_label)
                             if price_match:
-                                price = price_match.group(1)
+                                result["price"] = price_match.group(1)
                                 break
                         except:
                             continue
                 except:
                     pass
 
-                if not price:
-                    try:
-                        price_elements = driver.find_elements(By.CSS_SELECTOR,
-                                                              '.fontTitleLarge.Cbys4b, .dkgw2 .fontTitleLarge')
-                        for elem in price_elements:
-                            price_text = elem.text.strip()
-                            if price_text and any(char in price_text for char in ['$', '€', 'R$']):
-                                price = price_text
-                                break
-                    except:
-                        pass
-            except Exception as e:
-                print(f"Could not extract price: {str(e)}")
-                price = None
-
-        # Horários de funcionamento - MELHORADO
-        operating_hours = None
-        try:
-            hours_elements = driver.find_elements(By.CSS_SELECTOR, '.Io6YTe.fontBodyMedium.kR99db.fdkmkc')
-            for hours_element in hours_elements:
-                hours_text = hours_element.text
-                if hours_text and (
-                        'Check-in' in hours_text or 'Check-out' in hours_text or 'Open' in hours_text or 'Closed' in hours_text):
-                    operating_hours = hours_text
-                    break
-        except:
-            pass
-
-        # Monta o resultado
-        result = {
-            "name": name,
-            "rating": rating,
-            "rating_count": rating_count,
-            "description": description,
-            "images": images,
-            "link": link,
-            "facilities": facilities,
-            "lat": lat,
-            "lon": lon,
-            "phone": phone,
-            "address": address,
-            "price": price,
-            "operating_hours": operating_hours
-        }
-
-        if product_type.lower() == 'hotel':
-            result["stars"] = stars
+            # Horários de funcionamento
+            try:
+                hours_elements = driver.find_elements(By.CSS_SELECTOR, '.Io6YTe.fontBodyMedium.kR99db.fdkmkc')
+                for hours_element in hours_elements:
+                    hours_text = hours_element.text
+                    if hours_text and (
+                            'Check-in' in hours_text or 'Check-out' in hours_text or 'Open' in hours_text or 'Closed' in hours_text):
+                        result["operating_hours"] = hours_text
+                        break
+            except:
+                pass
 
         return result
 
@@ -585,7 +570,7 @@ def extract_details_from_modal(product_type, card_info):
         return _extract_logic()
     except (InvalidSessionIdException, WebDriverException):
         ensure_driver_alive()
-        time.sleep(0.5)
+        time.sleep(0.3)
         return _extract_logic()
     except Exception as e:
         print(f"Error extracting details: {str(e)}")
@@ -606,7 +591,7 @@ def extract_details_from_modal(product_type, card_info):
         }
 
 
-def load_more_cards_optimized(results_panel, current_count, max_stagnant=3):
+def load_more_cards_optimized(results_panel, current_count, max_stagnant=2):
     """Carrega mais cards usando a abordagem do código antigo - OTIMIZADO"""
     stagnant_iterations = 0
     previous_count = current_count
@@ -617,7 +602,7 @@ def load_more_cards_optimized(results_panel, current_count, max_stagnant=3):
         try:
             # Scroll até o final da lista
             driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", results_panel)
-            time.sleep(2.0)
+            time.sleep(1.2)  # Reduzido de 2.0 para 1.2
 
             # Conta quantos cards existem agora
             current_cards = safe_find_elements(By.CSS_SELECTOR, 'div.Nv2PK.THOPZb.CpccDe')
@@ -634,7 +619,7 @@ def load_more_cards_optimized(results_panel, current_count, max_stagnant=3):
                 # Tenta scroll mais agressivo quando não carrega
                 for _ in range(2):
                     driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", results_panel)
-                    time.sleep(1.0)
+                    time.sleep(0.6)  # Reduzido de 1.0 para 0.6
             else:
                 stagnant_iterations = 0
 
@@ -642,9 +627,9 @@ def load_more_cards_optimized(results_panel, current_count, max_stagnant=3):
 
             # Scroll adicional para garantir carregamento
             driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight - 100", results_panel)
-            time.sleep(0.8)
+            time.sleep(0.4)  # Reduzido de 0.8 para 0.4
             driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", results_panel)
-            time.sleep(1.5)
+            time.sleep(0.8)  # Reduzido de 1.5 para 0.8
 
         except Exception as e:
             if "stale element reference" in str(e).lower():
@@ -668,7 +653,7 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
         query = f"{search_term} {location}"
         url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}/?hl=en&gl=us"
         driver.get(url)
-        time.sleep(3.0)
+        time.sleep(2.2)  # Reduzido de 3.0 para 2.2
 
     safe_driver_action(_navigate_to_search)
 
@@ -721,7 +706,7 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
         item_start_time = time.time()
         print(f"Processing card {card_index + 1}/{cards_to_process} (New records: {new_records_count})...")
 
-        result = extract_details_from_modal(product_type, card_info)
+        result = extract_details_from_modal_optimized(product_type, card_info)
 
         item_time = time.time() - item_start_time
         item_times.append(item_time)
@@ -834,7 +819,7 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
 
         processed_count += 1
 
-        time.sleep(0.3)
+        time.sleep(0.1)  # Reduzido de 0.3 para 0.1
 
         if processed_count % 10 == 0:
             ensure_driver_alive()
@@ -848,16 +833,17 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
 
 def scrape_google_maps(product_type, location, max_results=None):
     """Função principal que executa o scraping com limite opcional"""
-    global total_processing_time, total_items_processed, item_times
+    global total_processing_time, total_items_processed, item_times, processed_urls_cache
 
     total_processing_time = 0
     total_items_processed = 0
     item_times = []
+    processed_urls_cache.clear()  # Limpa o cache a cada execução
 
     all_results = []
     search_start_time = time.time()
 
-    # TODAS as palavras-chave originais
+    # TODAS as palavras-chave originais (mantém todas)
     search_terms = [product_type]
     if product_type in PRODUCT_KEYWORDS:
         search_terms.extend(PRODUCT_KEYWORDS[product_type])
