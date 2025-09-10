@@ -1,4 +1,3 @@
-import logging
 import time
 import json
 import re
@@ -9,12 +8,10 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import WebDriverException, InvalidSessionIdException, NoSuchElementException, \
-    TimeoutException
+from selenium.common.exceptions import WebDriverException, InvalidSessionIdException, NoSuchElementException
 
 # Suprime logs antes de qualquer importação do Selenium
 import os
-import sys
 import warnings
 from contextlib import redirect_stderr, redirect_stdout
 import io
