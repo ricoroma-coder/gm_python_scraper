@@ -104,7 +104,7 @@ def create_chrome_driver():
     chrome_options.add_experimental_option("prefs", prefs)
 
     system = platform.system().lower()
-    executable = 'chromedriver'
+    executable = '/usr/bin/chromedriver'
     if system == "windows":
         executable = "chromedriver.exe"
 
@@ -320,6 +320,42 @@ def remove_parentheses(text):
     if not text:
         return None
     return text.replace('(', '').replace(')', '').replace(',', '').strip()
+
+
+def bypass_consent_screen():
+    time.sleep(2)
+    try:
+        # Busca botão usando CSS comum do Google Consent
+        accept_btn = driver.find_element(By.CSS_SELECTOR,
+                                         "button[aria-label^='Accept a'], button[aria-label^='Aceitar t'], button[jsname]")
+        accept_btn.click()
+        print("Consentimento: cliquei no botão de aceitar pelo CSS")
+        time.sleep(2)
+    except Exception as e:
+        print(f"Tentativa 1: {e}")
+
+    try:
+        # Busca botão por texto visível (para casos em que está em um <button>)
+        for txt in ['Accept all', 'Aceitar tudo']:
+            btns = driver.find_elements(By.XPATH, f"//button[contains(., '{txt}')]")
+            if btns:
+                btns[0].click()
+                print(f"Consentimento: cliquei em '{txt}'")
+                time.sleep(2)
+                break
+    except Exception as e:
+        print(f"Tentativa 2: {e}")
+
+    try:
+        # Busca genérica por todos os botões e clica no que contém o texto (fallback)
+        for btn in driver.find_elements(By.TAG_NAME, "button"):
+            if "Accept" in btn.text or "Aceitar" in btn.text:
+                btn.click()
+                print("Consentimento: cliquei no botão de aceitar por fallback")
+                time.sleep(2)
+                break
+    except Exception as e:
+        print(f"Tentativa 3: {e}")
 
 
 def collect_card_links(cards):
@@ -656,6 +692,9 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
         query = f"{search_term} {location}"
         url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}/?hl=en&gl=us"
         driver.get(url)
+
+        bypass_consent_screen()
+
         time.sleep(2.2)  # Reduzido de 3.0 para 2.2
 
     safe_driver_action(_navigate_to_search)
