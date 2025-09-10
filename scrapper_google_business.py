@@ -18,6 +18,7 @@ import sys
 import warnings
 from contextlib import redirect_stderr, redirect_stdout
 import io
+import platform
 
 # Configurações de ambiente para suprimir logs
 os.environ['WDM_LOG_LEVEL'] = '0'
@@ -105,8 +106,13 @@ def create_chrome_driver():
     }
     chrome_options.add_experimental_option("prefs", prefs)
 
+    system = platform.system().lower()
+    executable = 'chromedriver'
+    if system == "windows":
+        executable = "chromedriver.exe"
+
     # Configuração do service
-    service = Service(executable_path="chromedriver.exe")
+    service = Service(executable_path=executable)
 
     # Remove a flag problemática no Windows
     try:
