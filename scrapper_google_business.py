@@ -125,8 +125,8 @@ def create_chrome_driver():
             new_driver = webdriver.Chrome(service=service, options=chrome_options)
 
         # Configurações adicionais após criação
-        new_driver.set_page_load_timeout(15)
-        new_driver.implicitly_wait(3)
+        new_driver.set_page_load_timeout(5)
+        new_driver.implicitly_wait(1)
 
         print("Chrome driver created successfully")
         return new_driver
@@ -144,8 +144,8 @@ def create_chrome_driver():
 
         try:
             fallback_driver = webdriver.Chrome(service=service, options=simple_options)
-            fallback_driver.set_page_load_timeout(15)
-            fallback_driver.implicitly_wait(3)
+            fallback_driver.set_page_load_timeout(5)
+            fallback_driver.implicitly_wait(1)
             print("Fallback Chrome driver created successfully")
             return fallback_driver
         except Exception as fallback_error:
@@ -178,7 +178,7 @@ def ensure_driver_alive():
             pass
 
         driver = create_chrome_driver()
-        wait = WebDriverWait(driver, 8)
+        wait = WebDriverWait(driver, 4)
 
         DRIVER_CREATION_TIME = time.time() - creation_start
         print(f"New driver created in {DRIVER_CREATION_TIME:.2f}s")
@@ -249,7 +249,7 @@ def safe_find_elements(by, selector, context=None, max_retries=2):
 
 # Inicializa o driver
 driver = create_chrome_driver()
-wait = WebDriverWait(driver, 8)
+wait = WebDriverWait(driver, 4)
 
 # Palavras-chave para cada tipo de produto
 PRODUCT_KEYWORDS = {
@@ -323,14 +323,14 @@ def remove_parentheses(text):
 
 
 def bypass_consent_screen():
-    time.sleep(2)
+    time.sleep(1)
     try:
         # Busca botão usando CSS comum do Google Consent
         accept_btn = driver.find_element(By.CSS_SELECTOR,
                                          "button[aria-label^='Accept a'], button[aria-label^='Aceitar t'], button[jsname]")
         accept_btn.click()
         print("Consentimento: cliquei no botão de aceitar pelo CSS")
-        time.sleep(2)
+        time.sleep(1)
     except Exception as e:
         print(f"Tentativa 1: {e}")
 
@@ -341,7 +341,7 @@ def bypass_consent_screen():
             if btns:
                 btns[0].click()
                 print(f"Consentimento: cliquei em '{txt}'")
-                time.sleep(2)
+                time.sleep(1)
                 break
     except Exception as e:
         print(f"Tentativa 2: {e}")
@@ -352,7 +352,7 @@ def bypass_consent_screen():
             if "Accept" in btn.text or "Aceitar" in btn.text:
                 btn.click()
                 print("Consentimento: cliquei no botão de aceitar por fallback")
-                time.sleep(2)
+                time.sleep(1)
                 break
     except Exception as e:
         print(f"Tentativa 3: {e}")
@@ -411,7 +411,7 @@ def extract_details_from_modal_optimized(product_type, card_info):
     def _extract_logic():
         # Navega diretamente para o link do estabelecimento
         driver.get(card_info['href'])
-        time.sleep(1.8)  # Reduzido de 2.5 para 1.8
+        time.sleep(1)  # Reduzido de 2.5 para 1.8
 
         # Extrai informações básicas primeiro (mais importantes)
         result = {
@@ -465,7 +465,7 @@ def extract_details_from_modal_optimized(product_type, card_info):
         try:
             about_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[aria-label*="About"]')))
             driver.execute_script("arguments[0].click();", about_button)
-            time.sleep(1.2)  # Reduzido de 2.0 para 1.2
+            time.sleep(1)  # Reduzido de 2.0 para 1.2
         except Exception as e:
             print(f"Could not click About button: {str(e)}")
 
@@ -641,7 +641,7 @@ def load_more_cards_optimized(results_panel, current_count, max_stagnant=2):
         try:
             # Scroll até o final da lista
             driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", results_panel)
-            time.sleep(1.2)  # Reduzido de 2.0 para 1.2
+            time.sleep(1)  # Reduzido de 2.0 para 1.2
 
             # Conta quantos cards existem agora
             current_cards = safe_find_elements(By.CSS_SELECTOR, 'div.Nv2PK.THOPZb.CpccDe')
@@ -695,7 +695,7 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
 
         bypass_consent_screen()
 
-        time.sleep(2.2)  # Reduzido de 3.0 para 2.2
+        time.sleep(1)  # Reduzido de 3.0 para 2.2
 
     safe_driver_action(_navigate_to_search)
 
