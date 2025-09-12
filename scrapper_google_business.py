@@ -16,6 +16,7 @@ import warnings
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import platform
+import sys
 
 # Configurações de ambiente para suprimir logs
 os.environ['WDM_LOG_LEVEL'] = '0'
@@ -125,7 +126,7 @@ def create_chrome_driver():
             new_driver = webdriver.Chrome(service=service, options=chrome_options)
 
         # Configurações adicionais após criação
-        new_driver.set_page_load_timeout(5)
+        new_driver.set_page_load_timeout(20)
         new_driver.implicitly_wait(1)
 
         print("Chrome driver created successfully")
@@ -144,7 +145,7 @@ def create_chrome_driver():
 
         try:
             fallback_driver = webdriver.Chrome(service=service, options=simple_options)
-            fallback_driver.set_page_load_timeout(5)
+            fallback_driver.set_page_load_timeout(20)
             fallback_driver.implicitly_wait(1)
             print("Fallback Chrome driver created successfully")
             return fallback_driver
@@ -254,12 +255,13 @@ wait = WebDriverWait(driver, 4)
 # Palavras-chave para cada tipo de produto
 PRODUCT_KEYWORDS = {
     'hotel': [
-        'accommodation', 'hotels', 'lodging', 'guesthouses', 'farm hotel', 'eco lodge', 'glamping',
-        'camping', 'aparthotel', 'hotel boutique', 'all inclusive resort', 'spa resort', 'beach resort',
-        'mountain lodge', 'cabins', 'villas', 'rural houses', 'tourist farms', 'haciendas', 'estancias',
-        'refuges', 'accommodations', 'inns', 'hostels', 'auberges', 'chambres dhotes', 'ryokans', 'riads',
-        'bed and breakfast', 'b&b', 'resort', 'pensions', 'hostels', 'rental apartments', 'chalets',
-        'vacation homes', 'pet friendly hotel', 'hotel with breakfast'
+        # 'accommodation', 'lodging', 'guesthouses', 'farm hotel', 'eco lodge', 'glamping',
+        # 'camping', 'aparthotel', 'hotel boutique', 'all inclusive resort', 'spa resort', 'beach resort',
+        # 'mountain lodge', 'cabins', 'villas', 'rural houses', 'tourist farms', 'haciendas', 'estancias',
+        # 'refuges', 'accommodations', 'inns', 'hostels', 'auberges', 'chambres dhotes', 'ryokans', 'riads',
+        # 'bed and breakfast', 'resort', 'pensions', 'rental apartments', 'chalets',
+        # 'vacation homes', 'pet friendly hotel', 'hotel with breakfast'
+        'hostels', 'resorts', 'bed and breakfast', 'lodging', 'guesthouses', 'apart-hotel'
     ],
     'gastronomy': [
         'restaurants', 'bars', 'cafes', 'street food', 'bistros', 'pizzerias', 'steakhouses', 'snack bars',
@@ -930,9 +932,18 @@ def scrape_google_maps(product_type, location, max_results=None):
 
 
 if __name__ == "__main__":
-    allowed_types = ['hotel', 'gastronomy', 'attraction', 'shopping', 'activity']
-    product_type = input("Enter product type (hotel, gastronomy, attraction, shopping, activity): ")
+    def get_param(idx, prompt):
+        try:
+            value = sys.argv[idx]
+            if value.strip() == '':
+                raise ValueError
+            return value
+        except (IndexError, ValueError):
+            return input(prompt)
 
+
+    allowed_types = ['hotel', 'gastronomy', 'attraction', 'shopping', 'activity']
+    product_type = get_param(1, "Enter product type (hotel, gastronomy, attraction, shopping, activity): ")
     if product_type not in allowed_types:
         print("Invalid product type")
         try:
@@ -941,7 +952,7 @@ if __name__ == "__main__":
             pass
         exit(1)
 
-    location = input("Enter location (city/state/country): ")
+    location = get_param(2, "Enter location (city/state/country): ")
 
     # max_results_input = input("Enter max results per search term (leave empty for all): ").strip()
     max_results = None
