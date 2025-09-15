@@ -4,9 +4,6 @@ chromedriver.exe
 .venv/*
 .idea
 .idea/*
-products.db
-hotel.json
-attraction.json
-gastronomy.json
-activity.json
-shopping.json
+*.db
+*.json
+*.log
