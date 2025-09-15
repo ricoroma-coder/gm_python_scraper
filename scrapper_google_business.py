@@ -759,31 +759,12 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
 
         print(f"  Item processed in {item_time:.2f}s (Avg: {total_processing_time / total_items_processed:.2f}s)")
 
-        if result and result.get('name'):
+        if result:
             existing_record = None
-
-            # Verificação robusta de registro existente
-            if result.get('lat') and result.get('lon'):
-                # Busca por nome e coordenadas (mais preciso)
+            if result.get('name') and result.get('lat') and result.get('lon'):
                 existing_records = db.get(
-                    "SELECT * FROM products WHERE name = ? AND latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ? AND product_type = ?",
-                    [
-                        result.get('name'),
-                        float(result.get('lat')) - 0.001,
-                        float(result.get('lat')) + 0.001,
-                        float(result.get('lon')) - 0.001,
-                        float(result.get('lon')) + 0.001,
-                        product_type
-                    ]
-                )
-                if existing_records:
-                    existing_record = existing_records[0]
-
-            # Fallback: busca apenas por nome se não tiver coordenadas
-            if not existing_record and result.get('name'):
-                existing_records = db.get(
-                    "SELECT * FROM products WHERE name = ? AND product_type = ?",
-                    [result.get('name'), product_type]
+                    "SELECT * FROM products WHERE name = ? AND latitude = ? AND longitude = ? AND product_type = ?",
+                    [result.get('name'), float(result.get('lat')), float(result.get('lon')), product_type]
                 )
                 if existing_records:
                     existing_record = existing_records[0]
