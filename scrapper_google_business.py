@@ -395,7 +395,7 @@ def extract_details_from_modal_optimized(product_type, card_info):
     def _extract_logic():
         # Navega diretamente para o link do estabelecimento
         driver.get(card_info['href'])
-        time.sleep(1)  # Reduzido de 2.5 para 1.8
+        time.sleep(1)
 
         # Extrai informações básicas primeiro (mais importantes)
         result = {
@@ -449,7 +449,7 @@ def extract_details_from_modal_optimized(product_type, card_info):
         try:
             about_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[aria-label*="About"]')))
             driver.execute_script("arguments[0].click();", about_button)
-            time.sleep(1)  # Reduzido de 2.0 para 1.2
+            time.sleep(1)
         except Exception as e:
             print(f"Could not click About button: {str(e)}")
 
@@ -625,7 +625,7 @@ def load_more_cards_optimized(results_panel, current_count, max_stagnant=2):
         try:
             # Scroll até o final da lista
             driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", results_panel)
-            time.sleep(1)  # Reduzido de 2.0 para 1.2
+            time.sleep(1)
 
             # Conta quantos cards existem agora
             current_cards = safe_find_elements(By.CSS_SELECTOR, 'div.Nv2PK.THOPZb.CpccDe')
@@ -642,7 +642,7 @@ def load_more_cards_optimized(results_panel, current_count, max_stagnant=2):
                 # Tenta scroll mais agressivo quando não carrega
                 for _ in range(2):
                     driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", results_panel)
-                    time.sleep(0.6)  # Reduzido de 1.0 para 0.6
+                    time.sleep(0.6)
             else:
                 stagnant_iterations = 0
 
@@ -650,9 +650,9 @@ def load_more_cards_optimized(results_panel, current_count, max_stagnant=2):
 
             # Scroll adicional para garantir carregamento
             driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight - 100", results_panel)
-            time.sleep(0.4)  # Reduzido de 0.8 para 0.4
+            time.sleep(0.4)
             driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", results_panel)
-            time.sleep(0.8)  # Reduzido de 1.5 para 0.8
+            time.sleep(0.8)
 
         except Exception as e:
             if "stale element reference" in str(e).lower():
@@ -679,7 +679,7 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
 
         bypass_consent_screen()
 
-        time.sleep(1)  # Reduzido de 3.0 para 2.2
+        time.sleep(1)
 
     safe_driver_action(_navigate_to_search)
 
@@ -826,7 +826,7 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
 
         processed_count += 1
 
-        time.sleep(0.1)  # Reduzido de 0.3 para 0.1
+        time.sleep(0.1)
 
         if processed_count % 10 == 0:
             ensure_driver_alive()
