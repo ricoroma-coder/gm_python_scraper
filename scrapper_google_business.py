@@ -1,6 +1,12 @@
 import time
 import json
 import re
+import os
+import warnings
+from contextlib import redirect_stderr, redirect_stdout
+import io
+import platform
+import sys
 from DatabaseManager import DatabaseManager
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -9,14 +15,6 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import WebDriverException, InvalidSessionIdException, NoSuchElementException
-
-# Suprime logs antes de qualquer importação do Selenium
-import os
-import warnings
-from contextlib import redirect_stderr, redirect_stdout
-import io
-import platform
-import sys
 
 # Configurações de ambiente para suprimir logs
 os.environ['WDM_LOG_LEVEL'] = '0'
@@ -88,8 +86,8 @@ def create_chrome_driver():
 
     # User agent para evitar detecção
     chrome_options.add_argument(
-        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-
+        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    )
     chrome_options.add_experimental_option('excludeSwitches', ['enable-logging', 'enable-automation'])
     chrome_options.add_experimental_option("useAutomationExtension", False)
 
@@ -108,44 +106,32 @@ def create_chrome_driver():
     executable = '/usr/bin/chromedriver'
     if system == "windows":
         executable = "chromedriver.exe"
-
-    # Configuração do service
     service = Service(executable_path=executable)
-
-    # Remove a flag problemática no Windows
     try:
         if os.name == 'nt':
             service.creation_flags = 0x08000000
     except:
         pass
 
-    # Cria o driver com tratamento de erros melhorado
     try:
         null_output = io.StringIO()
         with redirect_stderr(null_output), redirect_stdout(null_output):
             new_driver = webdriver.Chrome(service=service, options=chrome_options)
-
-        # Configurações adicionais após criação
-        new_driver.set_page_load_timeout(20)
+        new_driver.set_page_load_timeout(30)
         new_driver.implicitly_wait(1)
-
         print("Chrome driver created successfully")
         return new_driver
-
     except Exception as e:
         print(f"Error creating Chrome driver: {str(e)}")
         print("Trying fallback configuration...")
-
-        # Configuração fallback mais simples
         simple_options = Options()
         simple_options.add_argument("--headless")
         simple_options.add_argument("--no-sandbox")
         simple_options.add_argument("--disable-dev-shm-usage")
         simple_options.add_argument("--disable-gpu")
-
         try:
             fallback_driver = webdriver.Chrome(service=service, options=simple_options)
-            fallback_driver.set_page_load_timeout(20)
+            fallback_driver.set_page_load_timeout(30)
             fallback_driver.implicitly_wait(1)
             print("Fallback Chrome driver created successfully")
             return fallback_driver
@@ -157,30 +143,23 @@ def create_chrome_driver():
 def ensure_driver_alive():
     """Garante que o driver está ativo, recriando se necessário"""
     global driver, wait, LAST_DRIVER_CHECK, DRIVER_CREATION_TIME
-
     current_time = time.time()
-
     if current_time - LAST_DRIVER_CHECK < DRIVER_CHECK_INTERVAL:
         return True
-
     LAST_DRIVER_CHECK = current_time
-
     try:
         driver.title
         return True
     except (InvalidSessionIdException, WebDriverException, AttributeError):
         print("Driver session lost, creating new driver...")
         creation_start = time.time()
-
         try:
             if driver:
                 driver.quit()
         except:
             pass
-
         driver = create_chrome_driver()
         wait = WebDriverWait(driver, 4)
-
         DRIVER_CREATION_TIME = time.time() - creation_start
         print(f"New driver created in {DRIVER_CREATION_TIME:.2f}s")
         return True
@@ -192,22 +171,18 @@ def ensure_driver_alive():
 def safe_driver_action(action_func, *args, max_retries=2, **kwargs):
     """Executa uma ação do driver with retry em caso de erro de sessão"""
     global driver, wait
-
     for attempt in range(max_retries):
         try:
             if not ensure_driver_alive():
-                time.sleep(0.3)  # Reduzido de 0.5 para 0.3
+                time.sleep(0.3)
                 continue
-
             return action_func(*args, **kwargs)
-
         except (InvalidSessionIdException, WebDriverException) as e:
             print(f"Driver error on attempt {attempt + 1}: {str(e)}")
-
             if attempt < max_retries - 1:
                 print("Recreating driver and retrying...")
                 ensure_driver_alive()
-                time.sleep(0.3)  # Reduzido de 0.5 para 0.3
+                time.sleep(0.3)
             else:
                 print("Max retries reached, raising exception")
                 raise e
@@ -217,7 +192,6 @@ def safe_driver_action(action_func, *args, max_retries=2, **kwargs):
 
 
 def safe_find_element(by, selector, context=None, max_retries=2):
-    """Encontra um elemento com proteção contra stale element reference"""
     for attempt in range(max_retries):
         try:
             if context:
@@ -227,13 +201,12 @@ def safe_find_element(by, selector, context=None, max_retries=2):
         except Exception as e:
             if "stale element reference" in str(e).lower() and attempt < max_retries - 1:
                 print(f"Stale element reference, retrying... (attempt {attempt + 1})")
-                time.sleep(0.3)  # Reduzido de 0.5 para 0.3
+                time.sleep(0.3)
                 continue
             raise e
 
 
 def safe_find_elements(by, selector, context=None, max_retries=2):
-    """Encontra elementos com proteção contra stale element reference"""
     for attempt in range(max_retries):
         try:
             if context:
@@ -243,7 +216,7 @@ def safe_find_elements(by, selector, context=None, max_retries=2):
         except Exception as e:
             if "stale element reference" in str(e).lower() and attempt < max_retries - 1:
                 print(f"Stale element reference, retrying... (attempt {attempt + 1})")
-                time.sleep(0.3)  # Reduzido de 0.5 para 0.3
+                time.sleep(0.3)
                 continue
             raise e
 
@@ -252,7 +225,6 @@ def safe_find_elements(by, selector, context=None, max_retries=2):
 driver = create_chrome_driver()
 wait = WebDriverWait(driver, 4)
 
-# Palavras-chave para cada tipo de produto
 PRODUCT_KEYWORDS = {
     'hotel': [
         # 'accommodation', 'lodging', 'guesthouses', 'farm hotel', 'eco lodge', 'glamping',
@@ -310,7 +282,6 @@ PRODUCT_KEYWORDS = {
 
 
 def extract_numbers_only(text):
-    """Extrai apenas números de uma string"""
     if not text:
         return None
     numbers = re.findall(r'\d+', text)
@@ -318,46 +289,57 @@ def extract_numbers_only(text):
 
 
 def remove_parentheses(text):
-    """Remove parênteses de uma string"""
     if not text:
         return None
     return text.replace('(', '').replace(')', '').replace(',', '').strip()
 
 
+def parse_rating_count(value):
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        value = value.lower().replace(" ", "")
+        if "k" in value:
+            import re
+            match = re.match(r"(\\d+)(?:k\\+)?", value)
+            if match:
+                return int(match.group(1)) * 1000
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
 def bypass_consent_screen():
     time.sleep(1)
     try:
-        # Busca botão usando CSS comum do Google Consent
         accept_btn = driver.find_element(By.CSS_SELECTOR,
-                                         "button[aria-label^='Accept a'], button[aria-label^='Aceitar t'], button[jsname]")
+            "button[aria-label^='Accept a'], button[aria-label^='Aceitar t'], button[jsname]")
         accept_btn.click()
         print("Consentimento: cliquei no botão de aceitar pelo CSS")
         time.sleep(1)
     except Exception as e:
         print(f"Tentativa 1: {e}")
-
-    try:
-        # Busca botão por texto visível (para casos em que está em um <button>)
-        for txt in ['Accept all', 'Aceitar tudo']:
-            btns = driver.find_elements(By.XPATH, f"//button[contains(., '{txt}')]")
-            if btns:
-                btns[0].click()
-                print(f"Consentimento: cliquei em '{txt}'")
-                time.sleep(1)
-                break
-    except Exception as e:
-        print(f"Tentativa 2: {e}")
-
-    try:
-        # Busca genérica por todos os botões e clica no que contém o texto (fallback)
-        for btn in driver.find_elements(By.TAG_NAME, "button"):
-            if "Accept" in btn.text or "Aceitar" in btn.text:
-                btn.click()
-                print("Consentimento: cliquei no botão de aceitar por fallback")
-                time.sleep(1)
-                break
-    except Exception as e:
-        print(f"Tentativa 3: {e}")
+        try:
+            for txt in ['Accept all', 'Aceitar tudo']:
+                btns = driver.find_elements(By.XPATH, f"//button[contains(., '{txt}')]")
+                if btns:
+                    btns[0].click()
+                    print(f"Consentimento: cliquei em '{txt}'")
+                    time.sleep(1)
+                    break
+        except Exception as e:
+            print(f"Tentativa 2: {e}")
+            try:
+                for btn in driver.find_elements(By.TAG_NAME, "button"):
+                    if "Accept" in btn.text or "Aceitar" in btn.text:
+                        btn.click()
+                        print("Consentimento: cliquei no botão de aceitar por fallback")
+                        time.sleep(1)
+                        break
+            except Exception as e:
+                print(f"Tentativa 3: {e}")
 
 
 def collect_card_links(cards):
@@ -778,7 +760,7 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
                     'link': result.get('link'),
                     'images': ';'.join(result.get('images', [])) if result.get('images') else None,
                     'rating': float(result.get('rating', 0)) if result.get('rating') else None,
-                    'rating_count': int(result.get('rating_count', 0)) if result.get('rating_count') else None,
+                    'rating_count': parse_rating_count(result.get('rating_count', 0)),
                     'facilities': ';'.join(result.get('facilities', [])) if result.get('facilities') else None,
                     'latitude': float(result.get('lat')) if result.get('lat') else None,
                     'longitude': float(result.get('lon')) if result.get('lon') else None,
@@ -822,7 +804,7 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
                     'link': result.get('link'),
                     'images': ';'.join(result.get('images', [])) if result.get('images') else None,
                     'rating': float(result.get('rating', 0)) if result.get('rating') else None,
-                    'rating_count': int(result.get('rating_count', 0)) if result.get('rating_count') else None,
+                    'rating_count': parse_rating_count(result.get('rating_count', 0)),
                     'facilities': ';'.join(result.get('facilities', [])) if result.get('facilities') else None,
                     'latitude': float(result.get('lat')) if result.get('lat') else None,
                     'longitude': float(result.get('lon')) if result.get('lon') else None,
