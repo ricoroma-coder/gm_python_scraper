@@ -168,7 +168,7 @@ def ensure_driver_alive():
         return False
 
 
-def safe_driver_action(action_func, *args, max_retries=2, **kwargs):
+def safe_driver_action(action_func, *args, max_retries=5, **kwargs):
     """Executa uma ação do driver with retry em caso de erro de sessão"""
     global driver, wait
     for attempt in range(max_retries):
@@ -191,7 +191,7 @@ def safe_driver_action(action_func, *args, max_retries=2, **kwargs):
             raise e
 
 
-def safe_find_element(by, selector, context=None, max_retries=2):
+def safe_find_element(by, selector, context=None, max_retries=3):
     for attempt in range(max_retries):
         try:
             if context:
@@ -206,7 +206,7 @@ def safe_find_element(by, selector, context=None, max_retries=2):
             raise e
 
 
-def safe_find_elements(by, selector, context=None, max_retries=2):
+def safe_find_elements(by, selector, context=None, max_retries=3):
     for attempt in range(max_retries):
         try:
             if context:
