@@ -669,21 +669,20 @@ def load_more_cards_optimized(results_panel, current_count, max_stagnant=2):
 
 
 def scrape_google_maps_with_keyword(product_type, location, search_term, max_results=None):
-    """Faz o scraping para um termo de busca específico - ABORDAGEM ORIGINAL OTIMIZADA"""
+    """Faz o scraping para um termo de busca específico - OTIMIZADA para resiliência"""
     global total_processing_time, total_items_processed, item_times
 
     def _navigate_to_search():
         query = f"{search_term} {location}"
         url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}/?hl=en&gl=us"
         driver.get(url)
-
         bypass_consent_screen()
-
         time.sleep(1)
 
+    # Navega e garante retry para abrir o painel de resultados
     safe_driver_action(_navigate_to_search)
 
-    # FASE 1: Carregamento de todos os cards possíveis
+    # FASE 1: Carrega todos os cards possíveis
     try:
         results_panel = safe_find_element(By.CSS_SELECTOR, 'div[role="feed"]')
     except NoSuchElementException:
@@ -691,26 +690,26 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
         return []
 
     print(f"Loading all available cards for: '{search_term}'")
-
-    # Carrega cards iniciais
     initial_cards = safe_find_elements(By.CSS_SELECTOR, 'div.Nv2PK.THOPZb.CpccDe')
     current_count = len(initial_cards)
     print(f"Initial cards: {current_count}")
 
-    # Carrega TODOS os cards disponíveis
     total_count, finished = load_more_cards_optimized(results_panel, current_count)
     print(f"Total cards available: {total_count}")
 
-    # Coleta os links de TODOS os cards
+    # Tenta coletar todos os links de cards encontrados, com retry
     def _collect_all_cards():
         cards = safe_find_elements(By.CSS_SELECTOR, 'div.Nv2PK.THOPZb.CpccDe')
         return collect_card_links(cards)
+    try:
+        card_data_list = safe_driver_action(_collect_all_cards)
+    except Exception as e:
+        print(f"Error collecting card links for term '{search_term}': {str(e)}")
+        return []
 
-    card_data_list = safe_driver_action(_collect_all_cards)
     total_available = len(card_data_list)
     print(f"Cards collected for processing: {total_available}")
 
-    # Determina quantos cards processar
     if max_results is not None:
         cards_to_process = min(max_results, total_available)
         print(f"Will process {cards_to_process} cards (limited by max_results={max_results})")
@@ -718,28 +717,27 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
         cards_to_process = total_available
         print(f"Will process ALL {cards_to_process} cards (no limit specified)")
 
-    # FASE 2: Processamento dos cards
+    # FASE 2: Processa cada card individualmente, ignorando falhas pontuais
     results = []
     db = DatabaseManager()
     processed_count = 0
     new_records_count = 0
-
     ensure_driver_alive()
 
     for card_index in range(cards_to_process):
         card_info = card_data_list[card_index]
-
         item_start_time = time.time()
         print(f"Processing card {card_index + 1}/{cards_to_process} (New records: {new_records_count})...")
-
-        result = extract_details_from_modal_optimized(product_type, card_info)
-
-        item_time = time.time() - item_start_time
-        item_times.append(item_time)
-        total_processing_time += item_time
-        total_items_processed += 1
-
-        print(f"  Item processed in {item_time:.2f}s (Avg: {total_processing_time / total_items_processed:.2f}s)")
+        try:
+            result = extract_details_from_modal_optimized(product_type, card_info)
+            item_time = time.time() - item_start_time
+            item_times.append(item_time)
+            total_processing_time += item_time
+            total_items_processed += 1
+            print(f" Item processed in {item_time:.2f}s (Avg: {total_processing_time / total_items_processed:.2f}s)")
+        except Exception as e:
+            print(f"Error processing card {card_index + 1}: {str(e)}")
+            continue
 
         if result:
             existing_record = None
@@ -753,7 +751,6 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
 
             if existing_record:
                 print(f"Found existing record with ID: {existing_record['id']} - updating with new data")
-
                 update_data = {
                     'name': result.get('name'),
                     'description': result.get('description'),
@@ -773,7 +770,6 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
                     update_data['stars'] = int(result.get('stars')) if result.get('stars') else None
 
                 db.update(existing_record['id'], update_data)
-
                 json_result = {
                     "name": result.get('name'),
                     "rating": result.get('rating'),
@@ -795,7 +791,6 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
                     json_result["stars"] = result.get('stars')
 
                 results.append(json_result)
-
             else:
                 db_data = {
                     'product_type': product_type,
@@ -825,7 +820,6 @@ def scrape_google_maps_with_keyword(product_type, location, search_term, max_res
                 results.append(result)
 
         processed_count += 1
-
         time.sleep(0.1)
 
         if processed_count % 10 == 0:
