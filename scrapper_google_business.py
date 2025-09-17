@@ -117,7 +117,7 @@ def create_chrome_driver():
         null_output = io.StringIO()
         with redirect_stderr(null_output), redirect_stdout(null_output):
             new_driver = webdriver.Chrome(service=service, options=chrome_options)
-        new_driver.set_page_load_timeout(30)
+        new_driver.set_page_load_timeout(40)
         new_driver.implicitly_wait(1)
         print("Chrome driver created successfully")
         return new_driver
@@ -131,7 +131,7 @@ def create_chrome_driver():
         simple_options.add_argument("--disable-gpu")
         try:
             fallback_driver = webdriver.Chrome(service=service, options=simple_options)
-            fallback_driver.set_page_load_timeout(30)
+            fallback_driver.set_page_load_timeout(40)
             fallback_driver.implicitly_wait(1)
             print("Fallback Chrome driver created successfully")
             return fallback_driver
