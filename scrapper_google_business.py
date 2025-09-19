@@ -233,9 +233,6 @@ async def process_search_term(page, db, product_type, location, search_term, max
         try:
             entry = await extract_details_from_modal(page, card)
 
-            # henrique
-            print(entry)
-
             # Save to database, adjust to your actual db schema
             db_data = {
                 'product_type': product_type,
