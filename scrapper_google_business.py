@@ -165,6 +165,11 @@ async def extract_details_from_modal(page, card):
                 price = await page.locator('.MNVeJb div').first.inner_text()
             except: price = None
 
+    if price:
+        match = re.search(r'(R\$|\$|€|£)\s?\d+(?:[.,]\d{1,2})?', price)
+        if match:
+            price = match.group(0)
+
     res = {
         "name": name,
         "rating": rating,
