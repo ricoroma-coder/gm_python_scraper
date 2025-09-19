@@ -143,9 +143,23 @@ async def extract_details_from_modal(page, card):
         address = await page.locator('button[data-item-id="address"]').locator('.Io6YTe').first.inner_text()
     except: address = None
 
-    try:  # Description: first non-empty paragraph node
-        desc = await page.locator('section[aria-label*="About"] p').first.inner_text()
+    try:
+        about_tab = page.locator('button[role="tab"] >> text=About')
+        if await about_tab.count() > 0:
+            await about_tab.first.click()
+            await page.wait_for_timeout(1200)
+            desc_els = await page.locator('.P1LL5e').all()
+            desc = "\n".join([await d.inner_text() for d in desc_els if await d.inner_text()])
+        else:
+            # fallback: try to grab a summary from current tab if available
+            desc_els = await page.locator('.P1LL5e').all()
+            desc = "\n".join([await d.inner_text() for d in desc_els if await d.inner_text()])
     except: desc = ""
+
+    if desc == "":
+        try:
+            address = await page.locator('.MmD1mb.fontBodyMedium').first.inner_text()
+        except: desc = ""
 
     try: # Img
         img = await page.locator('img[src*="googleusercontent.com"]').first.get_attribute('src')
