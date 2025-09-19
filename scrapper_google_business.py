@@ -100,7 +100,7 @@ async def collect_card_links(page):
     return card_data
 
 
-async def extract_details_from_modal(page, product_type, card):
+async def extract_details_from_modal(page, card):
     await page.goto(card['href'])
     await page.wait_for_timeout(1300)
 
@@ -212,7 +212,7 @@ async def process_search_term(page, db, product_type, location, search_term, max
     total_to_process = min(max_results, len(card_links)) if max_results else len(card_links)
     for card in card_links[:total_to_process]:
         try:
-            entry = await extract_details_from_modal(page, product_type, card)
+            entry = await extract_details_from_modal(page, card)
 
             # henrique
             print(entry)
