@@ -270,7 +270,8 @@ async def process_search_term(page, db, product_type, location, search_term, max
                 'longitude': entry.get('lon'),
                 'phone': entry.get('phone'),
                 'address': entry.get('address'),
-                'price': entry.get('price')
+                'price': entry.get('price'),
+                'card_href': card['href']
             }
 
             if product_type.lower() == 'hotel' and 'stars' in entry:
