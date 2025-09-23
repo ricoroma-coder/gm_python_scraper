@@ -245,10 +245,13 @@ async def process_search_term(page, db, product_type, location, search_term, max
 
     card_links = await collect_card_links(page)
     print(f'Cards collected: {len(card_links)}')
+
     total_to_process = min(max_results, len(card_links)) if max_results else len(card_links)
 
     card_times = []
     start_total = time.time()
+    new_for_term = 0
+    updated_for_term = 0
 
     for i, card in enumerate(card_links[:total_to_process], 1):
         card_start = time.time()
@@ -269,6 +272,7 @@ async def process_search_term(page, db, product_type, location, search_term, max
                 'address': entry.get('address'),
                 'price': entry.get('price')
             }
+
             if product_type.lower() == 'hotel' and 'stars' in entry:
                 db_data['stars'] = int(entry['stars']) if entry.get('stars') else None
 
@@ -279,24 +283,31 @@ async def process_search_term(page, db, product_type, location, search_term, max
             if len(existing) > 0:
                 data = existing[0]
                 db.update(data['id'], db_data)
+                updated_for_term += 1
                 print(f"Already exists: {db_data['name']}")
             else:
                 db.create(db_data)
-                print(f'Business saved: {entry.get("name")}')
+                new_for_term += 1
+                print(f"Business saved: {entry.get('name')}")
         except Exception as e:
             print(f'Failed to process card: {e}')
+
         card_end = time.time()
         card_time = card_end - card_start
         card_times.append(card_time)
-        print(f"Time spent for card {i}: {card_time:.2f} segundos")
+        print(f"Time spent for card {i}: {card_time:.2f} seconds")
 
     end_total = time.time()
     total_time = end_total - start_total
     if card_times:
         avg_card_time = sum(card_times) / len(card_times)
-        print(f"\nAverage time: {avg_card_time:.2f} segundos")
+        print(f"\nAverage time per card: {avg_card_time:.2f} seconds")
 
-    print(f"Time spent for all cards: {total_time:.2f} segundos")
+    print(f"Time spent for all cards: {total_time:.2f} seconds")
+
+    print(f"New records for term '{search_term}': {new_for_term}")
+    print(f"Updated records for term '{search_term}': {updated_for_term}")
+    return new_for_term, updated_for_term
 
 
 async def main():
@@ -315,19 +326,27 @@ async def main():
         exit(1)
 
     location = get_param(2, "Enter location (city/state/country): ")
-    max_results = None  # You may parametrize it
-
+    max_results = None # You may parametrize it
     db = DatabaseManager()
     search_terms = [product_type] + PRODUCT_KEYWORDS.get(product_type, [])
+
+    new_total = 0
+    updated_total = 0
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
         page = await context.new_page()
         print(f"Total search terms: {len(search_terms)}")
         for search_term in search_terms:
-            print(f"Processing: {search_term}")
-            await process_search_term(page, db, product_type, location, search_term, max_results)
+            print(f"\nProcessing: {search_term}")
+            new_for_term, updated_for_term = await process_search_term(page, db, product_type, location, search_term, max_results)
+            new_total += new_for_term
+            updated_total += updated_for_term
         await browser.close()
+
+    print(f"\nTotal new records: {new_total}")
+    print(f"Total updated records: {updated_total}")
 
 
 if __name__ == "__main__":
