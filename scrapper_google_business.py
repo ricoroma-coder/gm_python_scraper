@@ -188,7 +188,6 @@ async def extract_details_from_modal(page, card, product_type):
             address = await page.locator('.MmD1mb.fontBodyMedium').first.inner_text()
         except: desc = ""
 
-    # henrique ajustar facilities que estão listadas, mas tem um icone de "não tem" Ex: pet-friendly em Santa Barbara Golf and Ocean Club
     try: # Facilities block
         facility_els = await page.locator('.QoXOEc .CK16pd:not(:has(.G47vBd)) .gSamH').all()
         facilities = [await f.inner_text() for f in facility_els]
