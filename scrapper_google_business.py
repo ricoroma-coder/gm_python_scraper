@@ -100,7 +100,7 @@ async def collect_card_links(page):
     return card_data
 
 
-async def extract_details_from_modal(page, card):
+async def extract_details_from_modal(page, card, product_type):
     await page.goto(card['href'])
     await page.wait_for_timeout(1300)
 
@@ -116,11 +116,6 @@ async def extract_details_from_modal(page, card):
         rating_count_text = await page.locator('.UY7F9').first.inner_text()
         rating_count = parse_rating_count(rating_count_text)
     except: rating_count = None
-
-    try: # Facilities block
-        facility_els = await page.locator('.QoXOEc .CK16pd .gSamH').all()
-        facilities = [await f.inner_text() for f in facility_els]
-    except: facilities = card.get('facilities', [])
 
     try:
         lat = lon = None
@@ -143,23 +138,15 @@ async def extract_details_from_modal(page, card):
         address = await page.locator('button[data-item-id="address"]').locator('.Io6YTe').first.inner_text()
     except: address = None
 
-    try:
-        about_tab = page.locator('button[role="tab"] >> text=About')
-        if await about_tab.count() > 0:
-            await about_tab.first.click()
-            await page.wait_for_timeout(1200)
-            desc_els = await page.locator('.P1LL5e').all()
-            desc = "\n".join([await d.inner_text() for d in desc_els if await d.inner_text()])
-        else:
-            # fallback: try to grab a summary from current tab if available
-            desc_els = await page.locator('.P1LL5e').all()
-            desc = "\n".join([await d.inner_text() for d in desc_els if await d.inner_text()])
-    except: desc = ""
-
-    if desc == "":
+    stars = None
+    if product_type == 'hotel':
         try:
-            address = await page.locator('.MmD1mb.fontBodyMedium').first.inner_text()
-        except: desc = ""
+            stars_el = await page.locator('span', has_text='star hotel').first.text_content()
+            text = re.search(r'\d+', stars_el)
+            if text:
+                stars = text.group()
+        except:
+            stars = None
 
     try: # Img
         img = await page.locator('img[src*="googleusercontent.com"]').first.get_attribute('src')
@@ -184,6 +171,28 @@ async def extract_details_from_modal(page, card):
         if match:
             price = match.group(0)
 
+    try: # Description
+        about_tab = page.locator('button[role="tab"] >> text=About')
+        if await about_tab.count() > 0:
+            await about_tab.first.click()
+            await page.wait_for_timeout(1200)
+            desc_els = await page.locator('.P1LL5e').all()
+        else:
+            desc_els = await page.locator('.P1LL5e').all()
+
+        desc = "\n".join([await d.inner_text() for d in desc_els if await d.inner_text()])
+    except: desc = ""
+
+    if desc == "":
+        try:
+            address = await page.locator('.MmD1mb.fontBodyMedium').first.inner_text()
+        except: desc = ""
+
+    try: # Facilities block
+        facility_els = await page.locator('.QoXOEc .CK16pd .gSamH').all()
+        facilities = [await f.inner_text() for f in facility_els]
+    except: facilities = card.get('facilities', [])
+
     res = {
         "name": name,
         "rating": rating,
@@ -197,7 +206,8 @@ async def extract_details_from_modal(page, card):
         "phone": phone,
         "address": address,
         "price": price,
-        "operating_hours": None  # (Add extraction logic if desired)
+        "stars": stars,
+        "operating_hours": None
     }
 
     return res
@@ -210,9 +220,9 @@ async def process_search_term(page, db, product_type, location, search_term, max
     await bypass_consent(page)
     await page.wait_for_selector('div[role="feed"]', timeout=8000)
     await page.wait_for_timeout(1200)
+
     # Scroll to load more
     feed = page.locator('div[role="feed"]')
-    loaded = set()
     stagnation = 0
     prev_count = 0
     for _ in range(25):
@@ -231,7 +241,7 @@ async def process_search_term(page, db, product_type, location, search_term, max
     total_to_process = min(max_results, len(card_links)) if max_results else len(card_links)
     for card in card_links[:total_to_process]:
         try:
-            entry = await extract_details_from_modal(page, card)
+            entry = await extract_details_from_modal(page, card, product_type)
 
             # Save to database, adjust to your actual db schema
             db_data = {
