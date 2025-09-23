@@ -33,7 +33,7 @@ Extract only the information from the main business panel displayed on Google Ma
 Ignore any items in lists such as 'Vacation rentals nearby', 'Similar places', 'Nearby hotels', or recommended cards.
 The company/hotel/business name should be from the MAIN highlight panel, not from other cards.
 If there is a main title element (e.g. <h1> or class 'fontHeadlineLarge'), use it!
-Return only the fields for the business currently viewed: name, latitude, longitude, description, rating, rating_count, address, phone, images, price.
+Return only the fields for the business currently viewed: name (h1.DUwDvf), description(button[role="tab"] >> text=About .P1LL5e or .P1LL5e or .MmD1mb.fontBodyMedium), rating (.F7nice span[aria-hidden="true"]), rating_count (.UY7F9), address (button[data-item-id="address"] .Io6YTe), phone (button[data-item-id*="phone"] .Io6YTe), images (img[src*="googleusercontent.com"]), price ([aria-label*="$"], [aria-label*="R$"], [aria-label*="€"] or .drwWxc, .NFP9ae or .MNVeJb div).
 Never extract names of apartments, vacation homes, or suggestions of other properties—only from the focused panel.
 """
 )
