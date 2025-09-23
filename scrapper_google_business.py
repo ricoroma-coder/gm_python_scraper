@@ -1,6 +1,7 @@
 import asyncio
 import re
 import sys
+import time
 from DatabaseManager import DatabaseManager
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
 
@@ -233,12 +234,19 @@ async def process_search_term(page, db, product_type, location, search_term, max
             if stagnation >= 2: break
         else:
             stagnation = 0
+
         prev_count = cards_now
         if max_results and cards_now >= max_results:
             break
+
     card_links = await collect_card_links(page)
     total_to_process = min(max_results, len(card_links)) if max_results else len(card_links)
-    for card in card_links[:total_to_process]:
+
+    card_times = []
+    start_total = time.time()
+
+    for i, card in enumerate(card_links[:total_to_process], 1):
+        card_start = time.time()
         try:
             entry = await extract_details_from_modal(page, card, product_type)
 
@@ -272,10 +280,22 @@ async def process_search_term(page, db, product_type, location, search_term, max
                 print(f"Already exists: {db_data['name']}")
             else:
                 db.create(db_data)
-
-            print(f'Business saved: {entry.get("name")}')
+                print(f'Business saved: {entry.get("name")}')
         except Exception as e:
             print(f'Failed to process card: {e}')
+
+        card_end = time.time()
+        card_time = card_end - card_start
+        card_times.append(card_time)
+        print(f"Tempo processamento do card {i}: {card_time:.2f} segundos")
+
+    end_total = time.time()
+    total_time = end_total - start_total
+    if card_times:
+        avg_card_time = sum(card_times) / len(card_times)
+        print(f"\nTempo médio por card: {avg_card_time:.2f} segundos")
+
+    print(f"Tempo total do processamento: {total_time:.2f} segundos")
 
 
 async def main():
