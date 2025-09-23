@@ -1,64 +1,54 @@
 import asyncio
 import re
 import sys
+import json
 from DatabaseManager import DatabaseManager
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, LLMConfig, LLMExtractionStrategy, CacheMode
 
-
-PRODUCT_KEYWORDS = {
-    'hotel': [
-        # 'accommodation', 'lodging', 'guesthouses', 'farm hotel', 'eco lodge', 'glamping',
-        # 'camping', 'aparthotel', 'hotel boutique', 'all inclusive resort', 'spa resort', 'beach resort',
-        # 'mountain lodge', 'cabins', 'villas', 'rural houses', 'tourist farms', 'haciendas', 'estancias',
-        # 'refuges', 'accommodations', 'inns', 'hostels', 'auberges', 'chambres dhotes', 'ryokans', 'riads',
-        # 'bed and breakfast', 'resort', 'pensions', 'rental apartments', 'chalets',
-        # 'vacation homes', 'pet friendly hotel', 'hotel with breakfast'
-        'hostels', 'resorts', 'bed and breakfast', 'lodging', 'guesthouses', 'apart-hotel'
-    ],
-    'gastronomy': [
-        'restaurants', 'bars', 'cafes', 'street food', 'bistros', 'pizzerias', 'steakhouses', 'snack bars',
-        'bakeries', 'pastry shops', 'ice cream shops', 'pubs', 'taverns', 'canteens', 'trattorias',
-        'brasseries', 'gastropubs', 'food trucks', 'gastronomic markets', 'local cuisine', 'typical food',
-        'regional dishes', 'international cuisine', 'italian food', 'japanese cuisine', 'mexican food',
-        'french cuisine', 'chinese food', 'arabic cuisine', 'vegetarian food', 'vegan food',
-        'organic cuisine', 'fast food', 'slow food', 'wine tasting', 'beer tasting', 'cooking classes',
-        'food tours', 'dinner with show', 'restaurants with view', 'gastronomic experiences', 'chefs table',
-        'tasting menu', 'brunch', 'happy hour', 'dining', 'cuisine', 'diner', 'wine bar'
-    ],
-    'attraction': [
-        'tourist attractions', 'museums', 'national parks', 'historical monuments', 'beaches', 'viewpoints',
-        'historic centers', 'churches', 'cathedrals', 'castles', 'palaces', 'archaeological ruins',
-        'historic sites', 'unesco world heritage', 'landmarks', 'waterfalls', 'ecological trails',
-        'natural reserves', 'state parks', 'botanical gardens', 'zoos', 'aquariums', 'caves', 'canyons',
-        'volcanoes', 'glaciers', 'deserts', 'forests', 'lakes', 'rivers', 'art museums', 'galleries',
-        'theaters', 'operas', 'cultural centers', 'historic libraries', 'traditional markets',
-        'historic neighborhoods', 'colonial architecture', 'street art', 'murals', 'public sculptures',
-        'sightseeing', 'must see places', 'monument', 'museum', 'natural park', 'gallery', 'temple',
-        'heritage', 'historical site', 'square', 'park', 'palace'
-    ],
-    'shopping': [
-        'shopping centers', 'local markets', 'craft stores', 'luxury boutiques', 'outlets',
-        'commercial galleries', 'commercial streets', 'craft fairs', 'flea markets', 'antique shops',
-        'souvenir shops', 'duty free', 'tax free shopping', 'local crafts', 'typical products',
-        'souvenirs', 'jewelry', 'traditional clothing', 'ceramics', 'fabrics', 'spices', 'local wines',
-        'regional sweets', 'folk art', 'musical instruments', 'personal shopping', 'shopping tours',
-        'discount shopping', 'night markets', 'street fairs', 'bazaars', 'vintage stores',
-        'thrift stores', 'concept stores', 'flagship stores', 'markets', 'boutiques', 'stores',
-        'shops', 'market', 'shopping center'
-    ],
-    'activity': [
-        'water sports', 'boat trips', 'trails', 'horseback riding', 'extreme sports', 'diving',
-        'snorkeling', 'surf', 'windsurf', 'kitesurf', 'rafting', 'canoeing', 'stand up paddle',
-        'jet ski', 'parasailing', 'bungee jump', 'rappelling', 'climbing', 'zipline', 'paragliding',
-        'hang gliding', 'mountaineering', 'cycling', 'mountain bike', 'city tours', 'walking tours',
-        'guided tours', 'gastronomic tours', 'wine tours', 'photography tours', 'cooking classes',
-        'craft workshops', 'winery visits', 'tastings', 'night tours', 'ghost tours', 'historic tours',
-        'theme parks', 'water parks', 'interactive zoos', 'educational farms', 'train rides',
-        'carriage rides', 'picnics', 'children activities', 'family activities', 'kid friendly tours',
-        'activities', 'things to do', 'excursions', 'tours', 'adventures', 'experiences', 'tour',
-        'outdoor', 'nature', 'class', 'tasting', 'workshop'
-    ]
+# Schema Crawl4AI / LLM
+schema = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "latitude": {"type": "string"},
+        "longitude": {"type": "string"},
+        "description": {"type": "string"},
+        "rating": {"type": "string"},
+        "rating_count": {"type": "string"},
+        "address": {"type": "string"},
+        "phone": {"type": "string"},
+        "images": {"type": "string"},
+        "price": {"type": "string"}
+    }
 }
+
+llm_config = LLMConfig(provider="ollama/gemma:2b", api_token=None)
+llm_strategy = LLMExtractionStrategy(
+    llm_config=llm_config,
+    schema=schema,
+    extraction_type="schema",
+    instruction="""
+Extract only the information from the main business panel displayed on Google Maps after clicking the sidebar result card.
+Ignore any items in lists such as 'Vacation rentals nearby', 'Similar places', 'Nearby hotels', or recommended cards.
+The company/hotel/business name should be from the MAIN highlight panel, not from other cards.
+If there is a main title element (e.g. <h1> or class 'fontHeadlineLarge'), use it!
+Return only the fields for the business currently viewed: name, latitude, longitude, description, rating, rating_count, address, phone, images, price.
+Never extract names of apartments, vacation homes, or suggestions of other properties—only from the focused panel.
+"""
+)
+crawl_config = CrawlerRunConfig(extraction_strategy=llm_strategy, cache_mode=CacheMode.BYPASS)
+browser_config = BrowserConfig(headless=True)
+
+
+async def extrai_card_llm(html_card):
+    async with AsyncWebCrawler(config=browser_config) as crawler:
+        result = await crawler.arun(url="raw://" + html_card, config=crawl_config)
+        if result.success:
+            return json.loads(result.extracted_content)
+        else:
+            print("Erro na extração IA:", result.error_message)
+            return {}
 
 
 def parse_rating_count(value):
@@ -84,122 +74,46 @@ async def bypass_consent(page):
         pass
 
 
-async def collect_card_links(page):
-    # Collect business card links from the search results sidebar
-    cards = await page.locator('div.Nv2PK.THOPZb.CpccDe').all()
-    card_data = []
-    for card in cards:
-        link_el = card.locator('a.hfpxzc')
-        href = await link_el.get_attribute('href')
-        name = await card.locator('.qBF1Pd.fontHeadlineSmall').inner_text(timeout=1000) if await card.locator('.qBF1Pd.fontHeadlineSmall').count() else None
-        facilities = []
-        for el in await card.locator('.Yfjtfe.dc6iWb[aria-label]').all():
-            fac = await el.get_attribute('aria-label')
-            if fac: facilities.append(fac)
-        card_data.append({'href': href, 'name_preview': name, 'facilities': facilities})
-    return card_data
+# NOVA COLETA: retorna os próprios elementos dos cards (para clicar)
+async def collect_card_elements(page):
+    return await page.locator('div.Nv2PK.THOPZb.CpccDe').all()
 
 
+# EXTRAI PAINEL DE DETALHES APÓS CLIQUE NO CARD SIDEBAR
 async def extract_details_from_modal(page, card):
-    await page.goto(card['href'])
-    await page.wait_for_timeout(1300)
-
+    await card.click()
+    await page.wait_for_timeout(1200)
+    # await page.wait_for_selector('.Hu9e2e .aIFcqe h1, .Hu9e2e .aIFcqe .fontHeadlineLarge, .Hu9e2e .aIFcqe .DUwDvf', timeout=5000)
     try:
-        name = await page.locator('h1.DUwDvf, h1').first.inner_text()
-    except: name = card['name_preview']
+        panel_html = await page.locator('.Hu9e2e .aIFcqe').evaluate('el => el.outerHTML')
+    except Exception as e:
+        print(f"Falha ao capturar HTML do painel/modal: {e}")
+        return {}
 
-    try:
-        rating = await page.locator('.F7nice span[aria-hidden="true"]').first.inner_text()
-    except: rating = None
+    # henrique
+    print(panel_html)
+    print('')
 
-    try:
-        rating_count_text = await page.locator('.UY7F9').first.inner_text()
-        rating_count = parse_rating_count(rating_count_text)
-    except: rating_count = None
+    extracted = await extrai_card_llm(panel_html)
 
-    try: # Facilities block
-        facility_els = await page.locator('.QoXOEc .CK16pd .gSamH').all()
-        facilities = [await f.inner_text() for f in facility_els]
-    except: facilities = card.get('facilities', [])
+    #henrique
+    print(extracted)
+    exit()
 
-    try:
-        lat = lon = None
-        match = re.search(r'@(-?\d+\.\d+),(-?\d+\.\d+)', page.url)
-        if match:
-            lat, lon = float(match.group(1)), float(match.group(2))
-
-        if lat is None or lon is None:
-            match = re.search(r'!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)', page.url)
-            if match:
-                lat, lon = float(match.group(1)), float(match.group(2))
-    except:
-        lat = lon = None
-
-    try:
-        phone = await page.locator('button[data-item-id*="phone"]').locator('.Io6YTe').first.inner_text()
-    except: phone = None
-
-    try:
-        address = await page.locator('button[data-item-id="address"]').locator('.Io6YTe').first.inner_text()
-    except: address = None
-
-    try:
-        about_tab = page.locator('button[role="tab"] >> text=About')
-        if await about_tab.count() > 0:
-            await about_tab.first.click()
-            await page.wait_for_timeout(1200)
-            desc_els = await page.locator('.P1LL5e').all()
-            desc = "\n".join([await d.inner_text() for d in desc_els if await d.inner_text()])
-        else:
-            # fallback: try to grab a summary from current tab if available
-            desc_els = await page.locator('.P1LL5e').all()
-            desc = "\n".join([await d.inner_text() for d in desc_els if await d.inner_text()])
-    except: desc = ""
-
-    if desc == "":
-        try:
-            address = await page.locator('.MmD1mb.fontBodyMedium').first.inner_text()
-        except: desc = ""
-
-    try: # Img
-        img = await page.locator('img[src*="googleusercontent.com"]').first.get_attribute('src')
-    except: img = None
-
-    try: # Site link
-        link = await page.locator('a[data-item-id="authority"]').first.get_attribute('href')
-    except: link = None
-
-    try: # Price
-        price = await page.locator('[aria-label*="$"], [aria-label*="R$"], [aria-label*="€"]').first.get_attribute('aria-label')
-    except:
-        try:
-            price = await page.locator('.drwWxc, .NFP9ae').first.inner_text()
-        except:
-            try:
-                price = await page.locator('.MNVeJb div').first.inner_text()
-            except: price = None
-
-    if price:
-        match = re.search(r'(R\$|\$|€|£)\s?\d+(?:[.,]\d{1,2})?', price)
-        if match:
-            price = match.group(0)
-
+    images = extracted.get('images')
+    if isinstance(images, str): images = [images]
     res = {
-        "name": name,
-        "rating": rating,
-        "rating_count": rating_count,
-        "description": desc,
-        "images": [img] if img else [],
-        "link": link,
-        "facilities": facilities,
-        "lat": lat,
-        "lon": lon,
-        "phone": phone,
-        "address": address,
-        "price": price,
-        "operating_hours": None  # (Add extraction logic if desired)
+        "name": extracted.get('name', ''),
+        "rating": extracted.get('rating'),
+        "rating_count": extracted.get('rating_count'),
+        "description": extracted.get('description', ''),
+        "images": images if images else [],
+        "lat": extracted.get('latitude'),
+        "lon": extracted.get('longitude'),
+        "phone": extracted.get('phone', None),
+        "address": extracted.get('address', None),
+        "price": extracted.get('price', None),
     }
-
     return res
 
 
@@ -210,9 +124,8 @@ async def process_search_term(page, db, product_type, location, search_term, max
     await bypass_consent(page)
     await page.wait_for_selector('div[role="feed"]', timeout=8000)
     await page.wait_for_timeout(1200)
-    # Scroll to load more
+    # Scroll para carregar mais cards
     feed = page.locator('div[role="feed"]')
-    loaded = set()
     stagnation = 0
     prev_count = 0
     for _ in range(25):
@@ -227,42 +140,32 @@ async def process_search_term(page, db, product_type, location, search_term, max
         prev_count = cards_now
         if max_results and cards_now >= max_results:
             break
-    card_links = await collect_card_links(page)
-    total_to_process = min(max_results, len(card_links)) if max_results else len(card_links)
-    for card in card_links[:total_to_process]:
+
+    cards = await collect_card_elements(page)
+    total_to_process = min(max_results, len(cards)) if max_results else len(cards)
+    for card in cards[:total_to_process]:
         try:
             entry = await extract_details_from_modal(page, card)
-
-            # Save to database, adjust to your actual db schema
             db_data = {
                 'product_type': product_type,
                 'name': entry.get('name'),
                 'description': entry.get('description'),
-                'link': entry.get('link'),
                 'images': ';'.join(entry.get('images', [])),
                 'rating': float(entry.get('rating') or 0),
                 'rating_count': entry.get('rating_count', 0),
-                'facilities': ';'.join(entry.get('facilities', [])),
                 'latitude': entry.get('lat'),
                 'longitude': entry.get('lon'),
                 'phone': entry.get('phone'),
                 'address': entry.get('address'),
-                'price': entry.get('price')
+                'price': entry.get('price'),
             }
-
-            if product_type.lower() == 'hotel' and 'stars' in entry:
-                db_data['stars'] = int(entry['stars']) if entry.get('stars') else None
-
-            existing = db.get(
-                "SELECT * FROM products WHERE name=? AND latitude=? AND longitude=? AND product_type=?",
-                (db_data["name"], db_data["latitude"], db_data["longitude"], db_data["product_type"])
-            )
+            existing = db.get("SELECT * FROM products WHERE name=? AND latitude=? AND longitude=? AND product_type=?",
+                              (db_data["name"], db_data["latitude"], db_data["longitude"], db_data["product_type"]))
             if existing:
                 print(f"Already exists: {db_data['name']}")
                 continue
             else:
                 db.create(db_data)
-
             print(f'Business saved: {entry.get("name")}')
         except Exception as e:
             print(f'Failed to process card: {e}')
@@ -270,6 +173,7 @@ async def process_search_term(page, db, product_type, location, search_term, max
 
 async def main():
     allowed_types = ['hotel', 'gastronomy', 'attraction', 'shopping', 'activity']
+
     def get_param(idx, prompt):
         try:
             value = sys.argv[idx]
@@ -282,12 +186,10 @@ async def main():
     if product_type not in allowed_types:
         print("Invalid product type")
         exit(1)
-
     location = get_param(2, "Enter location (city/state/country): ")
-    max_results = None  # You may parametrize it
-
+    max_results = None
     db = DatabaseManager()
-    search_terms = [product_type] + PRODUCT_KEYWORDS.get(product_type, [])
+    search_terms = [product_type]
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
