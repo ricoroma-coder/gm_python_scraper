@@ -167,7 +167,7 @@ async def extract_details_from_modal(page, card, product_type):
             except: price = None
 
     if price:
-        match = re.search(r'(R\$|\$|€|£)\s?\d+(?:[.,]\d{1,2})?', price)
+        match = re.search(r'(R\$|\$|€|£)\s?(\d{1,3}(?:[.,]\d{3})*)([.,]\d{2})?', price)
         if match:
             price = match.group(0)
 
@@ -206,8 +206,7 @@ async def extract_details_from_modal(page, card, product_type):
         "phone": phone,
         "address": address,
         "price": price,
-        "stars": stars,
-        "operating_hours": None
+        "stars": stars
     }
 
     return res
@@ -243,7 +242,6 @@ async def process_search_term(page, db, product_type, location, search_term, max
         try:
             entry = await extract_details_from_modal(page, card, product_type)
 
-            # Save to database, adjust to your actual db schema
             db_data = {
                 'product_type': product_type,
                 'name': entry.get('name'),
@@ -267,9 +265,11 @@ async def process_search_term(page, db, product_type, location, search_term, max
                 "SELECT * FROM products WHERE name=? AND latitude=? AND longitude=? AND product_type=?",
                 (db_data["name"], db_data["latitude"], db_data["longitude"], db_data["product_type"])
             )
-            if existing:
+
+            if len(existing) > 0:
+                data = existing[0]
+                db.update(data['id'], db_data)
                 print(f"Already exists: {db_data['name']}")
-                continue
             else:
                 db.create(db_data)
 
