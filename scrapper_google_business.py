@@ -106,15 +106,15 @@ async def extract_details_from_modal(page, card, product_type):
     await page.wait_for_timeout(1300)
 
     try:
-        name = await page.locator('h1.DUwDvf, h1').first.inner_text()
+        name = await page.locator('h1.DUwDvf, h1').first.inner_text(timeout=5000)
     except: name = card['name_preview']
 
     try:
-        rating = await page.locator('.F7nice span[aria-hidden="true"]').first.inner_text()
+        rating = await page.locator('.F7nice span[aria-hidden="true"]').first.inner_text(timeout=5000)
     except: rating = None
 
     try:
-        rating_count_text = await page.locator('.UY7F9').first.inner_text()
+        rating_count_text = await page.locator('.UY7F9').first.inner_text(timeout=5000)
         rating_count = parse_rating_count(rating_count_text)
     except: rating_count = None
 
@@ -132,17 +132,17 @@ async def extract_details_from_modal(page, card, product_type):
         lat = lon = None
 
     try:
-        phone = await page.locator('button[data-item-id*="phone"]').locator('.Io6YTe').first.inner_text()
+        phone = await page.locator('button[data-item-id*="phone"]').locator('.Io6YTe').first.inner_text(timeout=5000)
     except: phone = None
 
     try:
-        address = await page.locator('button[data-item-id="address"]').locator('.Io6YTe').first.inner_text()
+        address = await page.locator('button[data-item-id="address"]').locator('.Io6YTe').first.inner_text(timeout=5000)
     except: address = None
 
     stars = None
     if product_type == 'hotel':
         try:
-            stars_el = await page.locator('span', has_text='star hotel').first.text_content()
+            stars_el = await page.locator('span', has_text='star hotel').first.text_content(timeout=5000)
             text = re.search(r'\d+', stars_el)
             if text:
                 stars = text.group()
@@ -150,21 +150,21 @@ async def extract_details_from_modal(page, card, product_type):
             stars = None
 
     try: # Img
-        img = await page.locator('img[src*="googleusercontent.com"]').first.get_attribute('src')
+        img = await page.locator('img[src*="googleusercontent.com"]').first.get_attribute('src', timeout=5000)
     except: img = None
 
     try: # Site link
-        link = await page.locator('a[data-item-id="authority"]').first.get_attribute('href')
+        link = await page.locator('a[data-item-id="authority"]').first.get_attribute('href', timeout=5000)
     except: link = None
 
     try: # Price
-        price = await page.locator('[aria-label*="$"], [aria-label*="R$"], [aria-label*="€"]').first.get_attribute('aria-label')
+        price = await page.locator('[aria-label*="$"], [aria-label*="R$"], [aria-label*="€"]').first.get_attribute('aria-label', timeout=5000)
     except:
         try:
-            price = await page.locator('.drwWxc, .NFP9ae').first.inner_text()
+            price = await page.locator('.drwWxc, .NFP9ae').first.inner_text(timeout=5000)
         except:
             try:
-                price = await page.locator('.MNVeJb div').first.inner_text()
+                price = await page.locator('.MNVeJb div').first.inner_text(timeout=5000)
             except: price = None
 
     if price:
@@ -181,17 +181,17 @@ async def extract_details_from_modal(page, card, product_type):
         else:
             desc_els = await page.locator('.P1LL5e').all()
 
-        desc = "\n".join([await d.inner_text() for d in desc_els if await d.inner_text()])
+        desc = "\n".join([await d.inner_text(timeout=5000) for d in desc_els if await d.inner_text(timeout=5000)])
     except: desc = ""
 
     if desc == "":
         try:
-            address = await page.locator('.MmD1mb.fontBodyMedium').first.inner_text()
+            address = await page.locator('.MmD1mb.fontBodyMedium').first.inner_text(timeout=5000)
         except: desc = ""
 
     try: # Facilities block
         facility_els = await page.locator('.QoXOEc .CK16pd:not(:has(.G47vBd)) .gSamH').all()
-        facilities = [await f.inner_text() for f in facility_els]
+        facilities = [await f.inner_text(timeout=5000) for f in facility_els]
     except: facilities = card.get('facilities', [])
 
     res = {
