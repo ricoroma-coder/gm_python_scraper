@@ -225,13 +225,17 @@ async def process_search_term(page, db, product_type, location, search_term, max
     feed = page.locator('div[role="feed"]')
     stagnation = 0
     prev_count = 0
-    for _ in range(25):
+    max_attempts = 100
+
+    print('Collecting cards...')
+
+    for _ in range(max_attempts):
         await feed.evaluate('el => {el.scrollTop = el.scrollHeight;}')
-        await page.wait_for_timeout(1000)
+        await page.wait_for_timeout(3000)
         cards_now = await page.locator('div.Nv2PK.THOPZb.CpccDe').count()
         if cards_now == prev_count:
             stagnation += 1
-            if stagnation >= 2: break
+            if stagnation >= 3: break
         else:
             stagnation = 0
 
@@ -240,6 +244,7 @@ async def process_search_term(page, db, product_type, location, search_term, max
             break
 
     card_links = await collect_card_links(page)
+    print(f'Cards collected: {len(card_links)}')
     total_to_process = min(max_results, len(card_links)) if max_results else len(card_links)
 
     card_times = []
@@ -249,7 +254,6 @@ async def process_search_term(page, db, product_type, location, search_term, max
         card_start = time.time()
         try:
             entry = await extract_details_from_modal(page, card, product_type)
-
             db_data = {
                 'product_type': product_type,
                 'name': entry.get('name'),
@@ -265,7 +269,6 @@ async def process_search_term(page, db, product_type, location, search_term, max
                 'address': entry.get('address'),
                 'price': entry.get('price')
             }
-
             if product_type.lower() == 'hotel' and 'stars' in entry:
                 db_data['stars'] = int(entry['stars']) if entry.get('stars') else None
 
@@ -273,7 +276,6 @@ async def process_search_term(page, db, product_type, location, search_term, max
                 "SELECT * FROM products WHERE name=? AND latitude=? AND longitude=? AND product_type=?",
                 (db_data["name"], db_data["latitude"], db_data["longitude"], db_data["product_type"])
             )
-
             if len(existing) > 0:
                 data = existing[0]
                 db.update(data['id'], db_data)
@@ -283,19 +285,18 @@ async def process_search_term(page, db, product_type, location, search_term, max
                 print(f'Business saved: {entry.get("name")}')
         except Exception as e:
             print(f'Failed to process card: {e}')
-
         card_end = time.time()
         card_time = card_end - card_start
         card_times.append(card_time)
-        print(f"Tempo processamento do card {i}: {card_time:.2f} segundos")
+        print(f"Time spent for card {i}: {card_time:.2f} segundos")
 
     end_total = time.time()
     total_time = end_total - start_total
     if card_times:
         avg_card_time = sum(card_times) / len(card_times)
-        print(f"\nTempo médio por card: {avg_card_time:.2f} segundos")
+        print(f"\nAverage time: {avg_card_time:.2f} segundos")
 
-    print(f"Tempo total do processamento: {total_time:.2f} segundos")
+    print(f"Time spent for all cards: {total_time:.2f} segundos")
 
 
 async def main():
