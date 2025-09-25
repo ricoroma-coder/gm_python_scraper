@@ -142,8 +142,10 @@ async def process_search_term(page, db, product_type, location, search_term, max
     url = f"https://www.google.com/maps/search/{query}/?hl=en&gl=us"
     await page.goto(url)
     await bypass_consent(page)
-    await page.wait_for_selector('div[role="feed"]', timeout=8000)
-    await page.wait_for_timeout(1200)
+    try:
+        await page.wait_for_selector('div[role="feed"]', timeout=8000)
+        await page.wait_for_timeout(1200)
+    except: return 0, 0
 
     # Scroll to load more
     feed = page.locator('div[role="feed"]')
