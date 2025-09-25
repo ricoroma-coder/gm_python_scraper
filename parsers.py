@@ -24,3 +24,7 @@ def parse_price(value):
     else: price = value
 
     return price
+
+
+def parse_facilities(values):
+    return ';'.join(values)

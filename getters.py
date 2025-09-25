@@ -1,5 +1,5 @@
 import re
-from parsers import parse_rating_count, parse_price
+from parsers import parse_rating_count, parse_price, parse_facilities
 
 
 async def get_property(page, column):
@@ -189,8 +189,18 @@ async def get_price(page):
 
 async def get_facilities(page):
     try:
-        facility_els = await page.locator('.QoXOEc .CK16pd:not(:has(.G47vBd)) .gSamH').all()
-        facilities = [await f.inner_text(timeout=1000) for f in facility_els]
-    except: facilities = None
+        await page.locator('button[role="tab"] >> text=About').first.click()
+        await page.wait_for_timeout(1000)
+        facility_els = await page.locator('.CK16pd.dc6iWb, .iNvpkb.SwaGS span[aria-label]').all()
+        facilities = [await f.get_attribute('aria-label', timeout=1000) for f in facility_els]
+        await page.locator('button[role="tab"] >> text=Overview').first.click()
+        await page.wait_for_timeout(1000)
+    except: facilities = []
 
-    return facilities
+    if not facilities:
+        try:
+            facility_els = await page.locator('.QoXOEc .CK16pd:not(:has(.G47vBd)) .gSamH').all()
+            facilities = [await f.inner_text(timeout=1000) for f in facility_els]
+        except: facilities = []
+
+    return parse_facilities(facilities)
