@@ -1,9 +1,9 @@
 import asyncio
-import re
 import sys
 import time
 from DatabaseManager import DatabaseManager
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+from getters import get_property
 
 
 PRODUCT_KEYWORDS = {
@@ -11,9 +11,9 @@ PRODUCT_KEYWORDS = {
         'accommodation', 'lodging', 'guesthouses', 'farm hotel', 'eco lodge', 'glamping',
         'camping', 'aparthotel', 'hotel boutique', 'all inclusive resort', 'spa resort', 'beach resort',
         'mountain lodge', 'cabins', 'villas', 'rural houses', 'tourist farms', 'haciendas', 'estancias',
-        'refuges', 'accommodations', 'inns', 'hostels', 'auberges', 'chambres dhotes', 'ryokans', 'riads',
+        'refuges', 'inns', 'hostels', 'auberges', 'chambres dhotes', 'ryokans', 'riads',
         'bed and breakfast', 'resort', 'pensions', 'rental apartments', 'chalets',
-        'vacation homes', 'pet friendly hotel', 'hotel with breakfast', 'apart-hotel'
+        'vacation homes', 'pet friendly hotel', 'hotel with breakfast'
     ],
     'gastronomy': [
         'restaurants', 'bars', 'cafes', 'street food', 'bistros', 'pizzerias', 'steakhouses', 'snack bars',
@@ -61,22 +61,6 @@ PRODUCT_KEYWORDS = {
 }
 
 
-def parse_rating_count(value):
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        value = re.sub(r"[\(\),\. ]", "", value)
-        if "k" in value:
-            match = re.match(r"(\d+)(?:k\+)?", value)
-            if match:
-                return int(match.group(1)) * 1000
-        try:
-            return int(value)
-        except (ValueError, TypeError):
-            return None
-    return None
-
-
 async def bypass_consent(page):
     try:
         await page.click("button[aria-label^='Accept a'], button[aria-label^='Aceitar t']", timeout=3000)
@@ -91,7 +75,10 @@ async def collect_card_links(page):
     for card in cards:
         link_el = card.locator('a.hfpxzc')
         href = await link_el.get_attribute('href')
-        name = await card.locator('.qBF1Pd.fontHeadlineSmall').inner_text(timeout=1000) if await card.locator('.qBF1Pd.fontHeadlineSmall').count() else None
+
+        try: name = await card.locator('.qBF1Pd.fontHeadlineSmall').inner_text(timeout=1000)
+        except: name = None
+
         facilities = []
         for el in await card.locator('.Yfjtfe.dc6iWb[aria-label]').all():
             fac = await el.get_attribute('aria-label')
@@ -104,94 +91,32 @@ async def extract_details_from_modal(page, card, product_type):
     await page.goto(card['href'])
     await page.wait_for_timeout(1300)
 
-    try:
-        name = await page.locator('h1.DUwDvf, h1').first.inner_text(timeout=1000)
-    except: name = card['name_preview']
+    name = await get_property(page, 'name')
+    if name is None: name = card['name_preview']
 
-    try:
-        rating = await page.locator('.F7nice span[aria-hidden="true"]').first.inner_text(timeout=1000)
-    except: rating = None
+    rating = await get_property(page, 'rating')
 
-    try:
-        rating_count_text = await page.locator('.UY7F9').first.inner_text(timeout=1000)
-        rating_count = parse_rating_count(rating_count_text)
-    except: rating_count = None
+    rating_count = await get_property(page, 'rating_count')
 
-    try:
-        lat = lon = None
-        match = re.search(r'@(-?\d+\.\d+),(-?\d+\.\d+)', page.url)
-        if match:
-            lat, lon = float(match.group(1)), float(match.group(2))
+    lat, lon = await get_property(page, 'latitude'), await get_property(page, 'longitude')
 
-        if lat is None or lon is None:
-            match = re.search(r'!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)', page.url)
-            if match:
-                lat, lon = float(match.group(1)), float(match.group(2))
-    except:
-        lat = lon = None
+    phone = await get_property(page, 'phone')
 
-    try:
-        phone = await page.locator('button[data-item-id*="phone"]').locator('.Io6YTe').first.inner_text(timeout=1000)
-    except: phone = None
-
-    try:
-        address = await page.locator('button[data-item-id="address"]').locator('.Io6YTe').first.inner_text(timeout=1000)
-    except: address = None
+    address = await get_property(page, 'address')
 
     stars = None
-    if product_type == 'hotel':
-        try:
-            stars_el = await page.locator('span', has_text='star hotel').first.text_content(timeout=1000)
-            text = re.search(r'\d+', stars_el)
-            if text:
-                stars = text.group()
-        except:
-            stars = None
+    if product_type == 'hotel': stars = await get_property(page, 'stars')
 
-    try: # Img
-        img = await page.locator('img[src*="googleusercontent.com"]').first.get_attribute('src', timeout=1000)
-    except: img = None
+    img = await get_property(page, 'images')
 
-    try: # Site link
-        link = await page.locator('a[data-item-id="authority"]').first.get_attribute('href', timeout=1000)
-    except: link = None
+    link = await get_property(page, 'link')
 
-    try: # Price
-        price = await page.locator('[aria-label*="$"], [aria-label*="R$"], [aria-label*="€"]').first.get_attribute('aria-label', timeout=1000)
-    except:
-        try:
-            price = await page.locator('.drwWxc, .NFP9ae').first.inner_text(timeout=1000)
-        except:
-            try:
-                price = await page.locator('.MNVeJb div').first.inner_text(timeout=1000)
-            except: price = None
+    price = await get_property(page, 'price')
 
-    if price:
-        match = re.search(r'(R\$|\$|€|£)\s?(\d{1,3}(?:[.,]\d{3})*)([.,]\d{2})?', price)
-        if match:
-            price = match.group(0)
+    desc = await get_property(page, 'description')
 
-    try: # Description
-        about_tab = page.locator('button[role="tab"] >> text=About')
-        if await about_tab.count() > 0:
-            await about_tab.first.click()
-            await page.wait_for_timeout(1200)
-            desc_els = await page.locator('.P1LL5e').all()
-        else:
-            desc_els = await page.locator('.P1LL5e').all()
-
-        desc = "\n".join([await d.inner_text(timeout=1000) for d in desc_els if await d.inner_text(timeout=1000)])
-    except: desc = ""
-
-    if desc == "":
-        try:
-            address = await page.locator('.MmD1mb.fontBodyMedium').first.inner_text(timeout=1000)
-        except: desc = ""
-
-    try: # Facilities block
-        facility_els = await page.locator('.QoXOEc .CK16pd:not(:has(.G47vBd)) .gSamH').all()
-        facilities = [await f.inner_text(timeout=1000) for f in facility_els]
-    except: facilities = card.get('facilities', [])
+    facilities = await get_property(page, 'facilities')
+    if facilities is None: facilities = card.get('facilities', [])
 
     res = {
         "name": name,
