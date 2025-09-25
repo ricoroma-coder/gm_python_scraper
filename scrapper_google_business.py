@@ -186,7 +186,7 @@ async def process_search_term(page, db, product_type, location, search_term, max
                 'name': entry.get('name'),
                 'description': entry.get('description'),
                 'link': entry.get('link'),
-                'images': ';'.join(entry.get('images', [])),
+                'images': entry.get('images', []),
                 'rating': float(entry.get('rating') or 0),
                 'rating_count': entry.get('rating_count', 0),
                 'facilities': entry.get('facilities', None),

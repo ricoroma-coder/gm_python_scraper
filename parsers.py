@@ -28,3 +28,8 @@ def parse_price(value):
 
 def parse_facilities(values):
     return ';'.join(values)
+
+
+def parse_img(value):
+    if isinstance(value, str): return value
+    return ';'.join(value)

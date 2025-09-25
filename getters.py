@@ -1,5 +1,5 @@
 import re
-from parsers import parse_rating_count, parse_price, parse_facilities
+from parsers import parse_rating_count, parse_price, parse_facilities, parse_img
 
 
 async def get_property(page, column):
@@ -170,6 +170,13 @@ async def get_stars(page):
 async def get_images(page):
     try: img = await page.locator('img[src*="googleusercontent.com"]').first.get_attribute('src', timeout=1000)
     except: img = None
+
+    if not img:
+        try: img = await page.locator('img[src*="streetviewpixels-pa.googleapis.com"]').first.get_attribute('src', timeout=1000)
+        except: img = None
+
+    if img:
+        img = parse_img(img)
 
     return img
 
