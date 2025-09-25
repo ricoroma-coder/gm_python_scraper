@@ -1,5 +1,5 @@
 import re
-from parsers import parse_rating_count, parse_price, parse_facilities, parse_img
+from parsers import parse_rating_count, parse_price, parse_facilities, parse_img, parse_stars
 
 
 async def get_property(page, column):
@@ -159,9 +159,7 @@ async def get_address(page):
 async def get_stars(page):
     try:
         stars_el = await page.locator('span', has_text='star hotel').first.text_content(timeout=1000)
-        text = re.search(r'\d+', stars_el)
-        if text: stars = text.group()
-        else: stars = None
+        stars = parse_stars(stars_el)
     except: stars = None
 
     return stars

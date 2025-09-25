@@ -33,3 +33,10 @@ def parse_facilities(values):
 def parse_img(value):
     if isinstance(value, str): return value
     return ';'.join(value)
+
+
+def parse_stars(value):
+    text = re.search(r'\d+', value)
+    if not text: return None
+    return text.group()
+
