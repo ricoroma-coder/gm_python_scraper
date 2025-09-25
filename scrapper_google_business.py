@@ -145,7 +145,9 @@ async def process_search_term(page, db, product_type, location, search_term, max
     try:
         await page.wait_for_selector('div[role="feed"]', timeout=8000)
         await page.wait_for_timeout(1200)
-    except: return 0, 0
+    except:
+        print('Something wrong, page not found... Moving on....')
+        return 0, 0
 
     # Scroll to load more
     feed = page.locator('div[role="feed"]')
