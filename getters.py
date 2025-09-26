@@ -58,7 +58,7 @@ async def get_description(page):
     try:  # Description
         await page.locator('button[role="tab"] >> text=About').first.click()
         await page.wait_for_timeout(1000)
-        desc_els = await page.locator('.P1LL5e').all()
+        desc_els = await page.locator('.P1LL5e, .HlvSq').all()
         desc = "\n".join([await d.inner_text(timeout=1000) for d in desc_els if await d.inner_text(timeout=1000)])
         await page.locator('button[role="tab"] >> text=Overview').first.click()
         await page.wait_for_timeout(1000)
@@ -71,7 +71,7 @@ async def get_description(page):
         except: desc = ""
 
     if desc == "":
-        try: desc = await page.locator('.MmD1mb.fontBodyMedium').first.inner_text(timeout=1000)
+        try: desc = await page.locator('.MmD1mb.fontBodyMedium, .WeS02d.fontBodyMedium .PYvSYb, .bwoZTb.fontBodyMedium').first.inner_text(timeout=1000)
         except: desc = ""
 
     return desc

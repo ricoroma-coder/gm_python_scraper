@@ -6,14 +6,29 @@ from getters import get_property
 
 
 async def main():
-    try: column = sys.argv[1]
-    except: column = input('Inform the column you want to update: ')
+    try:
+        column = sys.argv[1]
+        product_type = sys.argv[2] if len(sys.argv) > 2 else None
+    except:
+        column = input('Inform the column you want to update: ')
+        product_type = input('Inform the product type you want to update (Empty for all): ')
+
+    if product_type and product_type not in ['hotel', 'gastronomy', 'attraction', 'shopping', 'activity']:
+        print('Product type not supported...')
+        exit()
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
         db = DatabaseManager()
-        results = db.get(f"SELECT * FROM products WHERE {column}='' OR {column} IS NULL")
+
+        sql = f"SELECT * FROM products WHERE ({column}='' OR {column} IS NULL)"
+        params = []
+        if product_type:
+            sql += " AND product_type=?"
+            params.append(product_type)
+
+        results = db.get(sql, params)
 
         for result in results:
             url = result.get('card_href')
