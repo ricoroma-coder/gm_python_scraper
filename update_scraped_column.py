@@ -32,7 +32,9 @@ async def main():
 
         for result in results:
             url = result.get('card_href')
-            await page.goto(url)
+
+            try: await page.goto(url)
+            except: pass
 
             scraped = await get_property(page, column)
 
