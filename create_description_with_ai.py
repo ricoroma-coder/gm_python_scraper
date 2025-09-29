@@ -70,6 +70,10 @@ def main():
         ['Based on sightseeing, recreation, and getting around']
     )
 
+    print(f"Registros encontrados: {len(data)}")
+    if len(data) == 0:
+        exit()
+
     for registry in data:
         if RESOURCE_EXHAUSTED >= 9:
             print('A API do Gemini não está respondendo, encerrando o fluxo...')
