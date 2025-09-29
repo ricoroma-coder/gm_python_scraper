@@ -30,7 +30,8 @@ class DatabaseManager:
                 phone TEXT,
                 address TEXT,
                 stars INTEGER,
-                price TEXT
+                price TEXT,
+                card_href TEXT
             )
         ''')
 

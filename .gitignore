@@ -6,3 +6,4 @@ chromedriver.exe
 *.db
 *.json
 *.log
+.env
