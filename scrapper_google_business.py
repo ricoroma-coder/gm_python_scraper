@@ -209,8 +209,13 @@ async def process_search_term(page, db, product_type, location, search_term, max
                 "SELECT * FROM products WHERE name=? AND latitude=? AND longitude=? AND product_type=?",
                 (db_data["name"], db_data["latitude"], db_data["longitude"], db_data["product_type"])
             )
+
             if len(existing) > 0:
                 data = existing[0]
+
+                if db_data.get('description') == '' or db_data.get('description') is None:
+                    db_data['description'] = data.get('description')
+
                 db.update(data['id'], db_data)
                 updated_for_term += 1
                 print(f"Already exists: {db_data['name']}")
